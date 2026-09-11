@@ -1,0 +1,20 @@
+{
+  "name": "tactus-angelis",
+  "version": "2.0.0",
+  "description": "Website voor Tactus Angelis by Mirjam — Shamballa & Caropoint behandelaar in Berkel-Enschot",
+  "private": true,
+  "scripts": {
+    "start": "npx serve .",
+    "dev": "npx live-server --port=3000",
+    "deploy": "netlify deploy --dir . --prod"
+  },
+  "keywords": [
+    "shamballa",
+    "caropoint",
+    "healing",
+    "berkel-enschot",
+    "tilburg"
+  ],
+  "author": "Marco van Steenbrugge",
+  "license": "UNLICENSED"
+}
