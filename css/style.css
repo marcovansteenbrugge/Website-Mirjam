@@ -11,10 +11,10 @@
   --goud-donker: #B8934A;
 
   /* Smaragd-teal marmer — van diepe rand naar lichtere kern */
-  --teal-diep: #061A19;
-  --teal-donker: #0A2B28;
-  --teal: #0F3A35;
-  --teal-licht: #16463F;
+  --teal-diep: #03181A;
+  --teal-donker: #062322;
+  --teal: #082C2C;
+  --teal-licht: #0D3836;
 
   --tekst: #F7F1E3;
   --tekst-zacht: #A3C2B8;
@@ -64,7 +64,7 @@ a { color: var(--goud); }
 /* ── NAVIGATIE ─────────────────────────────────────────────── */
 #main-nav {
   position: sticky; top: 0; z-index: 100;
-  background: rgba(15, 58, 53, 0.96);
+  background: rgba(8, 44, 44, 0.96);
   backdrop-filter: blur(8px);
   border-top: 2px solid var(--goud);
   border-bottom: 2px solid var(--goud);
@@ -117,7 +117,7 @@ a { color: var(--goud); }
 .tactus-header {
   /* Marmer-effect: lichtere kern, diep weglopende randen */
   background:
-    radial-gradient(ellipse 90% 80% at 50% 42%, #174A42 0%, #0C2E2A 55%, var(--teal-diep) 100%);
+    radial-gradient(ellipse 90% 80% at 50% 42%, #11423F 0%, #072726 55%, var(--teal-diep) 100%);
   text-align: center;
   padding: 3.5rem 1.5rem 3rem;
   border-bottom: 2px solid var(--goud);
@@ -252,7 +252,7 @@ footer .veer-divider { margin: 0 auto 1.5rem; }
   margin-inline: auto;
 }
 .cirkel-foto--groot { width: min(300px, 80vw); height: min(300px, 80vw); }
-.cirkel-foto--portret { object-position: center 15%; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3); }
+.cirkel-foto--portret { object-position: center 28%; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3); }
 .glow { box-shadow: 0 0 40px rgba(212, 177, 104, 0.25); }
 .foto-caption {
   font-size: 0.75rem; color: var(--tekst-zacht);
