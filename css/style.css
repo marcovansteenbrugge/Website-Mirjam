@@ -5,19 +5,23 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --goud: #C9A84C;
-  --goud-licht: #E2C97E;
-  --goud-donker: #B8922A;
+  /* Goud — warm en zacht, zoals in het logo-ontwerp */
+  --goud: #D4B168;
+  --goud-licht: #EAD7A0;
+  --goud-donker: #B8934A;
 
-  --teal: #0D3B47;
-  --teal-donker: #0A2F3A;
-  --teal-diep: #061E25;
-  --teal-licht: #0F4A59;
+  /* Smaragd-teal marmer — van diepe rand naar lichtere kern */
+  --teal-diep: #061A19;
+  --teal-donker: #0A2B28;
+  --teal: #0F3A35;
+  --teal-licht: #16463F;
 
-  --tekst: #F5EDD6;
-  --tekst-zacht: #A8C5CC;
+  --tekst: #F7F1E3;
+  --tekst-zacht: #A3C2B8;
+  --tekst-gedempt: #4E756B;
 
-  --rand: rgba(201, 168, 76, 0.2);
+  --rand: rgba(212, 177, 104, 0.22);
+  --goud-glans: rgba(212, 177, 104, 0.14);
   --radius: 16px;
   --sectie-padding: 6rem 4rem;
 }
@@ -60,7 +64,7 @@ a { color: var(--goud); }
 /* ── NAVIGATIE ─────────────────────────────────────────────── */
 #main-nav {
   position: sticky; top: 0; z-index: 100;
-  background: rgba(13, 59, 71, 0.96);
+  background: rgba(15, 58, 53, 0.96);
   backdrop-filter: blur(8px);
   border-top: 2px solid var(--goud);
   border-bottom: 2px solid var(--goud);
@@ -111,7 +115,9 @@ a { color: var(--goud); }
 
 /* ── HEADER ────────────────────────────────────────────────── */
 .tactus-header {
-  background: linear-gradient(180deg, var(--teal-diep) 0%, var(--teal) 100%);
+  /* Marmer-effect: lichtere kern, diep weglopende randen */
+  background:
+    radial-gradient(ellipse 90% 80% at 50% 42%, #174A42 0%, #0C2E2A 55%, var(--teal-diep) 100%);
   text-align: center;
   padding: 3.5rem 1.5rem 3rem;
   border-bottom: 2px solid var(--goud);
@@ -122,13 +128,13 @@ a { color: var(--goud); }
   position: absolute; top: 50%; left: 50%;
   transform: translate(-50%, -50%);
   width: 600px; height: 600px; max-width: 140vw; border-radius: 50%;
-  background: radial-gradient(circle, rgba(201, 168, 76, 0.07), transparent 70%);
+  background: radial-gradient(circle, rgba(212, 177, 104, 0.07), transparent 70%);
   pointer-events: none;
 }
 .tactus-kicker {
   position: relative;
   font-size: 0.75rem; letter-spacing: 0.25em; text-transform: uppercase;
-  color: #8AAEC8; margin-bottom: 0.75rem;
+  color: var(--tekst-zacht); margin-bottom: 0.75rem;
 }
 .tactus-naam {
   position: relative;
@@ -144,6 +150,38 @@ a { color: var(--goud); }
   font-style: italic; color: var(--goud-licht); letter-spacing: 0.12em;
 }
 
+/* ── VEREN ─────────────────────────────────────────────────── */
+.veer {
+  position: absolute;
+  pointer-events: none; user-select: none;
+  z-index: 0;
+}
+.veer--hoek-links {
+  top: -72px; left: -46px; width: 140px;
+  transform: rotate(32deg); opacity: 0.55;
+}
+.veer--hoek-rechts {
+  bottom: -86px; right: -38px; width: 122px;
+  transform: rotate(-152deg); opacity: 0.4;
+}
+.veer--hero {
+  bottom: -100px; right: 6%; width: 118px;
+  transform: rotate(196deg); opacity: 0.22;
+}
+
+.veer-divider {
+  display: flex; align-items: center; justify-content: center;
+  gap: 1rem; max-width: 300px; margin: 1.75rem auto 0;
+  position: relative;
+}
+.veer-divider span {
+  flex: 1; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--goud), transparent);
+}
+.veer-divider img { width: 40px; transform: rotate(90deg); opacity: 1; }
+
+footer .veer-divider { margin: 0 auto 1.5rem; }
+
 /* ── HERO ──────────────────────────────────────────────────── */
 .hero {
   min-height: 88vh;
@@ -158,11 +196,11 @@ a { color: var(--goud); }
 }
 .hero::before {
   top: -80px; right: -80px; width: 500px; height: 500px;
-  background: radial-gradient(circle, rgba(201, 168, 76, 0.12), transparent 70%);
+  background: radial-gradient(circle, rgba(212, 177, 104, 0.12), transparent 70%);
 }
 .hero::after {
   bottom: -60px; left: 10%; width: 300px; height: 300px;
-  background: radial-gradient(circle, rgba(201, 168, 76, 0.08), transparent 70%);
+  background: radial-gradient(circle, rgba(212, 177, 104, 0.08), transparent 70%);
 }
 .hero-tekst, .hero-visual { position: relative; }
 
@@ -206,7 +244,7 @@ a { color: var(--goud); }
 }
 .cirkel-foto--groot { width: min(300px, 80vw); height: min(300px, 80vw); }
 .cirkel-foto--portret { object-position: center 15%; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3); }
-.glow { box-shadow: 0 0 40px rgba(201, 168, 76, 0.25); }
+.glow { box-shadow: 0 0 40px rgba(212, 177, 104, 0.25); }
 .foto-caption {
   font-size: 0.75rem; color: var(--tekst-zacht);
   margin-top: 0.75rem; font-style: italic;
@@ -316,13 +354,13 @@ section { padding: var(--sectie-padding); border-bottom: 2px solid var(--goud); 
   height: 3px; background: var(--goud);
   transform: scaleX(0); transform-origin: left; transition: transform 0.3s;
 }
-.methode-card:hover { transform: translateY(-4px); box-shadow: 0 12px 32px rgba(201, 168, 76, 0.12); }
+.methode-card:hover { transform: translateY(-4px); box-shadow: 0 12px 32px rgba(212, 177, 104, 0.12); }
 .methode-card:hover::before { transform: scaleX(1); }
 .methode-nr {
   display: block;
   font-family: 'Playfair Display', Georgia, serif;
   font-size: 3rem; font-weight: 600;
-  color: rgba(201, 168, 76, 0.25); line-height: 1; margin-bottom: 1rem;
+  color: rgba(212, 177, 104, 0.25); line-height: 1; margin-bottom: 1rem;
 }
 .methode-card h3 { font-size: 1.05rem; font-weight: 500; margin-bottom: 0.6rem; color: var(--goud-licht); }
 .methode-card p { font-size: 0.9rem; color: var(--tekst-zacht); line-height: 1.65; }
@@ -335,7 +373,7 @@ section { padding: var(--sectie-padding); border-bottom: 2px solid var(--goud); 
 }
 .steps::before {
   content: ''; position: absolute; top: 45px; left: 15%; right: 15%;
-  height: 1px; background: rgba(201, 168, 76, 0.3);
+  height: 1px; background: rgba(212, 177, 104, 0.3);
 }
 .step { flex: 1; padding: 0 1.5rem; text-align: center; }
 .step-dot {
@@ -366,7 +404,7 @@ section { padding: var(--sectie-padding); border-bottom: 2px solid var(--goud); 
   position: relative;
 }
 .tarief-card:hover { transform: translateY(-4px); }
-.tarief-card--populair { border: 2px solid rgba(201, 168, 76, 0.5); }
+.tarief-card--populair { border: 2px solid rgba(212, 177, 104, 0.5); }
 .tarief-badge {
   position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
   background: var(--goud); color: var(--teal-diep);
@@ -429,12 +467,12 @@ section { padding: var(--sectie-padding); border-bottom: 2px solid var(--goud); 
 .review-form input[type="text"],
 .review-form textarea {
   width: 100%; padding: 0.85rem 1rem; margin-bottom: 1rem;
-  background: var(--teal); border: 1px solid rgba(201, 168, 76, 0.3);
+  background: var(--teal); border: 1px solid rgba(212, 177, 104, 0.3);
   border-radius: 8px; color: var(--tekst);
   font-size: 0.95rem; font-family: inherit;
 }
 .review-form textarea { resize: vertical; margin-bottom: 1.25rem; }
-.review-form ::placeholder { color: #7FA3AC; }
+.review-form ::placeholder { color: #7FA096; }
 .review-melding { color: var(--tekst-zacht); font-size: 0.85rem; margin-top: 0.75rem; min-height: 1.4em; }
 .review-melding.gelukt { color: var(--goud); }
 .review-melding.fout { color: #F0A9A9; }
@@ -450,7 +488,7 @@ section { padding: var(--sectie-padding); border-bottom: 2px solid var(--goud); 
 }
 .contact-row {
   display: flex; align-items: flex-start; gap: 1rem;
-  padding: 0.875rem 0; border-bottom: 1px solid rgba(201, 168, 76, 0.15);
+  padding: 0.875rem 0; border-bottom: 1px solid rgba(212, 177, 104, 0.15);
 }
 .contact-row:first-child { padding-top: 0; }
 .contact-row:last-child { border-bottom: none; padding-bottom: 0; }
@@ -484,7 +522,7 @@ footer {
 .footer-links { margin-top: 0.75rem; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem 1.5rem; }
 .footer-links a { color: var(--goud-licht); text-decoration: none; }
 .footer-links a:hover { color: var(--goud); text-decoration: underline; }
-.footer-credit { margin-top: 1rem; font-size: 0.75rem; color: #5A8290; }
+.footer-credit { margin-top: 1rem; font-size: 0.75rem; color: var(--tekst-gedempt); }
 .footer-credit span { color: var(--goud); }
 
 /* ── ANIMATIES ─────────────────────────────────────────────── */
@@ -514,6 +552,11 @@ footer {
   }
   .nav-links.open { display: flex; }
   .nav-links a { display: block; padding: 0.6rem 0.25rem; font-size: 1rem; }
+
+  .veer--hoek-links { top: -50px; left: -34px; width: 92px; }
+  .veer--hoek-rechts { bottom: -58px; right: -28px; width: 80px; }
+  .veer--hero { width: 80px; bottom: -60px; right: 2%; opacity: 0.16; }
+  .veer-divider { max-width: 220px; }
 
   .hero {
     grid-template-columns: 1fr; min-height: auto;
