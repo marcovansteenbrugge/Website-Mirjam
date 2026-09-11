@@ -10,14 +10,14 @@ const path = require('path');
 
 const BASIS = path.join(__dirname, '..', 'assets', 'images');
 
-const W = 240, H = 470;
+const W = 340, H = 480;
 
 // Schacht: elegante S-bocht van basis (rechtsonder) naar punt (linksboven).
 const P = [
-  { x: 150, y: 462 },
-  { x: 118, y: 336 },
-  { x: 78,  y: 172 },
-  { x: 104, y: 14  }
+  { x: 200, y: 470 },
+  { x: 168, y: 340 },
+  { x: 128, y: 172 },
+  { x: 152, y: 14  }
 ];
 
 const bez = (t) => {
@@ -51,10 +51,10 @@ const ruis = () => {
    plaats van een gelijkmatige kam. Ongeveer een op de vijf baarden
    is goud — die lopen als accent door het dons heen.            */
 
-const RIJEN = 170;
-const BUNDEL = 5;
-const MAX = 96;
-const profiel = (u) => Math.pow(Math.sin(Math.PI * Math.pow(u, 0.58)), 0.7);
+const RIJEN = 230;
+const BUNDEL = 6;
+const MAX = 148;
+const profiel = (u) => Math.pow(Math.sin(Math.PI * Math.pow(u, 0.5)), 0.52);
 
 const dons = [];
 const goudDraden = [];
@@ -77,7 +77,7 @@ for (let i = 0; i < RIJEN; i++) {
   const pr = profiel(u);
 
   for (const kant of [-1, 1]) {
-    const voller = kant < 0 ? 1 : 0.82;
+    const voller = kant < 0 ? 1 : 0.88;
     const lengte = MAX * pr * voller * bundel.lengte * (0.9 + ruis() * 0.2);
     if (lengte < 3) continue;
 
@@ -103,9 +103,9 @@ for (let i = 0; i < RIJEN; i++) {
 
     if (ruis() < 0.19) {
       // Gouden draad: dunner en helderder dan het dons eromheen.
-      goudDraden.push(`<path d="${d}" stroke-width="${r1(0.35 + 0.35 * pr)}" opacity="${r1(0.3 + 0.45 * pr)}"/>`);
+      goudDraden.push(`<path d="${d}" stroke-width="${r1(0.4 + 0.45 * pr)}" opacity="${r1(0.32 + 0.45 * pr)}"/>`);
     } else {
-      dons.push(`<path d="${d}" stroke-width="${r1(0.3 + 0.45 * pr)}" opacity="${r1(0.12 + 0.3 * pr)}"/>`);
+      dons.push(`<path d="${d}" stroke-width="${r1(0.4 + 0.6 * pr)}" opacity="${r1(0.15 + 0.36 * pr)}"/>`);
     }
     (kant < 0 ? randLinks : randRechts).push(eind);
   }

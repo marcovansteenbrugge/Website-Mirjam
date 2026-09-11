@@ -157,15 +157,15 @@ a { color: var(--goud); }
   z-index: 0;
 }
 .veer--hoek-links {
-  top: -84px; left: -58px; width: 190px;
+  top: -92px; left: -70px; width: 240px;
   transform: rotate(26deg); opacity: 0.75;
 }
 .veer--hoek-rechts {
-  bottom: -96px; right: -48px; width: 165px;
+  bottom: -104px; right: -60px; width: 210px;
   transform: rotate(-158deg); opacity: 0.6;
 }
 .veer--hero {
-  bottom: -110px; right: 5%; width: 150px;
+  bottom: -118px; right: 4%; width: 190px;
   transform: rotate(198deg); opacity: 0.3;
 }
 
@@ -187,7 +187,7 @@ a { color: var(--goud); }
   flex: 1; height: 1px;
   background: linear-gradient(90deg, transparent, var(--goud), transparent);
 }
-.veer-divider img { width: 62px; transform: rotate(90deg); opacity: 1; }
+.veer-divider img { width: 78px; transform: rotate(90deg); opacity: 1; }
 
 footer .veer-divider { margin: 0 auto 1.5rem; }
 
@@ -562,9 +562,9 @@ footer {
   .nav-links.open { display: flex; }
   .nav-links a { display: block; padding: 0.6rem 0.25rem; font-size: 1rem; }
 
-  .veer--hoek-links { top: -50px; left: -34px; width: 92px; }
-  .veer--hoek-rechts { bottom: -58px; right: -28px; width: 80px; }
-  .veer--hero { width: 80px; bottom: -60px; right: 2%; opacity: 0.16; }
+  .veer--hoek-links { top: -54px; left: -40px; width: 120px; }
+  .veer--hoek-rechts { bottom: -62px; right: -34px; width: 105px; }
+  .veer--hero { width: 105px; bottom: -64px; right: 2%; opacity: 0.16; }
   .veer-divider { max-width: 220px; }
 
   .hero {
