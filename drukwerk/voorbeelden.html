@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>body{margin:0}img{max-width:100%}</style>
+</head>
+<body>
+<title>Drukwerk Tactus Angelis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400;1,600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
+<style>
+  /* De standaardmarges van de browser (figure krijgt er 40px links en rechts)
+     verstoren zowel de pagina als de indeling binnen het drukwerk. */
+  *, *::before, *::after { box-sizing: border-box; }
+  figure, figcaption, p, h1, h2, h3, ul, li, blockquote { margin: 0; }
+  ul { list-style: none; padding: 0; }
+
+  :root {
+    --goud: #D4B168;
+    --goud-licht: #EAD7A0;
+    --teal: #082C2C;
+    --teal-diep: #03181A;
+    --teal-licht: #0D3836;
+    --creme: #F7F1E3;
+    --zacht: #A3C2B8;
+  }
+
+  body {
+    background: #061F1F;
+    color: var(--creme);
+    font-family: 'DM Sans', system-ui, sans-serif;
+    line-height: 1.65;
+    padding: 0 16px 64px;
+  }
+
+  .binnen { max-width: 1180px; margin: 0 auto; }
+
+  header.top {
+    padding-block: 48px 8px;
+    border-bottom: 1px solid rgba(212,177,104,.25);
+    margin-bottom: 8px;
+  }
+  header.top h1 {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: clamp(1.7rem, 4vw, 2.6rem);
+    font-weight: 600; line-height: 1.15; text-wrap: balance;
+    color: var(--goud); margin-bottom: 10px;
+  }
+  header.top p { color: var(--zacht); max-width: 62ch; font-size: .95rem; }
+
+  .waarschuwing {
+    margin: 22px 0 40px;
+    border-left: 3px solid var(--goud);
+    background: rgba(212,177,104,.07);
+    padding: 14px 18px;
+    font-size: .875rem; color: var(--goud-licht);
+    max-width: 70ch;
+  }
+  .waarschuwing strong { color: var(--goud); }
+
+  h2.stuk-titel {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 1.45rem; font-weight: 600; color: var(--creme);
+    margin: 52px 0 4px;
+  }
+  h2.stuk-titel span { color: var(--goud); font-style: italic; font-weight: 400; }
+  .stuk-uitleg { color: var(--zacht); font-size: .9rem; max-width: 66ch; margin-bottom: 20px; }
+  .specs {
+    font-size: .78rem; color: var(--zacht); letter-spacing: .04em;
+    text-transform: uppercase; margin-bottom: 20px;
+  }
+
+  .paar { display: flex; flex-wrap: wrap; gap: 26px; align-items: flex-start; }
+  .zijde { display: flex; flex-direction: column; gap: 8px; }
+  .zijde > figcaption {
+    font-size: .74rem; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--zacht);
+  }
+
+  /* ── Het drukwerk zelf: alles op ware verhouding in millimeters ── */
+  .drukstuk {
+    position: relative; overflow: hidden;
+    box-shadow: 0 10px 34px rgba(0,0,0,.45);
+    border-radius: calc(1.2 * var(--mm));
+    font-kerning: normal;
+  }
+  .drukstuk * { position: relative; }
+
+  .kaart-liggend {
+    --mm: min(3.78px, calc((100vw - 52px) / 85));
+    --pt: calc(var(--mm) * 0.3528);
+    width: calc(85 * var(--mm)); height: calc(55 * var(--mm));
+  }
+  .kaart-staand {
+    --mm: min(3.78px, calc((100vw - 52px) / 55));
+    --pt: calc(var(--mm) * 0.3528);
+    width: calc(55 * var(--mm)); height: calc(85 * var(--mm));
+  }
+  .flyer-a5 {
+    --mm: min(3.3px, calc((100vw - 52px) / 148));
+    --pt: calc(var(--mm) * 0.3528);
+    width: calc(148 * var(--mm)); height: calc(210 * var(--mm));
+  }
+  .kaart-a6 {
+    --mm: min(3.78px, calc((100vw - 52px) / 105));
+    --pt: calc(var(--mm) * 0.3528);
+    width: calc(105 * var(--mm)); height: calc(148 * var(--mm));
+  }
+
+  .pf { font-family: 'Playfair Display', Georgia, serif; }
+  .dm { font-family: 'DM Sans', system-ui, sans-serif; }
+
+  .sier {
+    position: absolute; pointer-events: none;
+    z-index: 0;
+  }
+
+  /* QR in zwart op wit met rustzone eromheen — anders scant hij niet */
+  .qr {
+    background: #fff;
+    border-radius: calc(1.5 * var(--mm));
+    display: block; flex: none;
+  }
+
+  .haarlijn {
+    height: 1px; background: var(--goud); opacity: .45; width: 100%;
+  }
+
+  .voetnoot {
+    margin-top: 14px; font-size: .8rem; color: var(--zacht);
+    max-width: 66ch;
+  }
+  .voetnoot strong { color: var(--goud-licht); font-weight: 500; }
+
+  footer.slot {
+    margin-top: 64px; padding-top: 22px;
+    border-top: 1px solid rgba(212,177,104,.25);
+    color: var(--zacht); font-size: .85rem; max-width: 70ch;
+  }
+</style>
+
+<div class="binnen">
+
+<header class="top">
+  <h1>Visitekaartjes en flyers</h1>
+  <p>Uitgewerkte voorbeelden voor Tactus Angelis by Mirjam, op ware verhouding
+     en in de huisstijlkleuren. Alles wat je hier ziet is opgebouwd met dezelfde
+     letters, kleuren en beeldelementen als de website.</p>
+</header>
+
+<div class="waarschuwing">
+  <strong>Nog niet naar de drukker.</strong> Overal staat nu <em>Tactus Angelis</em>
+  met <em>mvansteenbrugge@gmail.com</em>. Zolang de keuze tussen Angelis en Angelus
+  niet vastligt — en daarmee ook het mailadres en de QR-code — is dit een voorbeeld
+  om naar te kijken, niet om te laten drukken.
+</div>
+
+
+<!-- ══════════════ VISITEKAARTJE B ══════════════ -->
+<h2 class="stuk-titel">Visitekaartje <span>Misschien</span></h2>
+<p class="stuk-uitleg">
+  Haar eigen kernzin staat op de voorkant in plaats van de merknaam. Daardoor werkt
+  het kaartje ook los op een balie: iemand met pijn leest de zin, niet een bedrijfsnaam
+  die hem nog niets zegt. Dit is het hoofdkaartje.
+</p>
+<p class="specs">85 × 55 mm · 350 g · dubbelzijdig mat laminaat · liggend</p>
+
+<div class="paar">
+  <figure class="zijde">
+    <div class="drukstuk kaart-liggend" style="background:var(--teal-diep)">
+      <!-- vleugel als schaduw, aflopend rechtsonder -->
+      <img class="sier" src="../assets/images/vleugel.svg" alt=""
+           style="width:calc(52*var(--mm)); right:calc(-8*var(--mm)); bottom:calc(-10*var(--mm)); opacity:.12">
+      <!-- klein veertje rechtsboven -->
+      <img class="sier" src="../assets/images/veer.svg" alt=""
+           style="width:calc(6*var(--mm)); right:calc(7*var(--mm)); top:calc(5*var(--mm)); opacity:.85">
+
+      <div style="position:absolute; inset:0; display:flex; flex-direction:column;
+                  justify-content:center; padding-inline:calc(9*var(--mm)); width:78%">
+        <p class="pf" style="font-size:calc(10.5*var(--pt)); line-height:1.35; color:var(--creme)">
+          Misschien kan ik jou helpen
+        </p>
+        <p class="pf" style="font-size:calc(13*var(--pt)); font-style:italic; line-height:1.3;
+                             color:var(--goud); margin-top:calc(1*var(--mm))">
+          van je pijn af te komen.
+        </p>
+      </div>
+    </div>
+    <figcaption>Voorkant</figcaption>
+  </figure>
+
+  <figure class="zijde">
+    <div class="drukstuk kaart-liggend" style="background:var(--teal); display:flex;
+         flex-direction:column; padding:calc(5*var(--mm)) calc(6*var(--mm))">
+
+      <div style="display:flex; align-items:center; gap:calc(4*var(--mm))">
+        <img src="../assets/images/logo.jpeg" alt=""
+             style="width:calc(11*var(--mm)); height:calc(11*var(--mm));
+                    border-radius:50%; border:calc(.35*var(--mm)) solid var(--goud); object-fit:cover">
+        <div>
+          <p class="pf" style="font-size:calc(8*var(--pt)); letter-spacing:.18em; color:var(--creme)">
+            TACTUS ANGELIS
+          </p>
+          <p class="pf" style="font-size:calc(7*var(--pt)); font-style:italic; color:var(--goud)">
+            by Mirjam
+          </p>
+        </div>
+      </div>
+
+      <div class="haarlijn" style="margin:calc(3*var(--mm)) 0 calc(2.5*var(--mm))"></div>
+
+      <div style="display:flex; justify-content:space-between; align-items:flex-end; flex:1">
+        <div>
+          <p class="pf" style="font-size:calc(8.5*var(--pt)); color:var(--goud);
+                               margin-bottom:calc(1*var(--mm))">
+            Mirjam van Steenbrugge
+          </p>
+          <p class="dm" style="font-size:calc(6*var(--pt)); line-height:1.6; color:var(--creme)">
+            Shamballa master · Caropoint methode<br>
+            Behandeling aan huis in Berkel-Enschot<br>
+            mvansteenbrugge@gmail.com<br>
+            Afspraak in overleg
+          </p>
+        </div>
+
+        <img class="qr" src="../assets/images/qr_zwart.png" alt="QR-code die een e-mail opent"
+             style="width:calc(24*var(--mm)); height:calc(24*var(--mm));">
+      </div>
+    </div>
+    <figcaption>Achterkant</figcaption>
+  </figure>
+</div>
+
+<p class="voetnoot">
+  <strong>Let op de QR:</strong> die staat bewust in een cremewit blok met ruimte eromheen.
+  Een QR-code goud-op-groen of wit-uit-groen wordt door veel telefoons niet gelezen —
+  scanners hebben donker op licht nodig, met een rustzone.
+</p>
+
+
+<!-- ══════════════ VISITEKAARTJE C ══════════════ -->
+<h2 class="stuk-titel">Visitekaartje <span>Waar zit het?</span></h2>
+<p class="stuk-uitleg">
+  Het enige kaartje dat meteen antwoord geeft op de vraag die de doelgroep echt heeft:
+  helpt dit bij míjn klacht? Nuchter, met klachten én tarieven. Dit is het stapeltje dat
+  je achterlaat bij de pedicure of de kapper — staand, zodat het opvalt tussen andere
+  kaartjes in een bakje.
+</p>
+<p class="specs">55 × 85 mm · 350 g · mat laminaat · staand</p>
+
+<div class="paar">
+  <figure class="zijde">
+    <div class="drukstuk kaart-staand" style="background:var(--teal); display:flex;
+         flex-direction:column; align-items:center; padding:calc(6*var(--mm)) calc(6*var(--mm))">
+
+      <img src="../assets/images/logo.jpeg" alt=""
+           style="width:calc(18*var(--mm)); height:calc(18*var(--mm)); border-radius:50%;
+                  border:calc(.4*var(--mm)) solid var(--goud); object-fit:cover">
+
+      <p class="pf" style="font-size:calc(8.5*var(--pt)); letter-spacing:.16em; color:var(--creme);
+                           margin-top:calc(3*var(--mm))">TACTUS ANGELIS</p>
+      <p class="pf" style="font-size:calc(7*var(--pt)); font-style:italic; color:var(--goud)">by Mirjam</p>
+
+      <div class="haarlijn" style="width:calc(20*var(--mm)); margin:calc(4*var(--mm)) 0"></div>
+
+      <ul class="dm" style="list-style:none; align-self:flex-start; padding-left:calc(3*var(--mm));
+                            font-size:calc(8*var(--pt)); line-height:1.85; color:var(--creme)">
+        <li>✦&nbsp; Nekpijn</li>
+        <li>✦&nbsp; Rugklachten</li>
+        <li>✦&nbsp; Hielspoor</li>
+        <li>✦&nbsp; Schouder en knie</li>
+        <li>✦&nbsp; Onrust en spanning</li>
+      </ul>
+
+      <p class="pf" style="font-size:calc(8*var(--pt)); font-style:italic; color:var(--goud-licht);
+                           margin-top:auto; text-align:center">
+        Misschien kan ik jou helpen.
+      </p>
+    </div>
+    <figcaption>Voorkant</figcaption>
+  </figure>
+
+  <figure class="zijde">
+    <div class="drukstuk kaart-staand" style="background:var(--teal-licht); display:flex; flex-direction:column">
+
+      <div style="background:var(--teal-diep); padding:calc(3*var(--mm)) 0 calc(2.5*var(--mm));
+                  display:flex; flex-direction:column; align-items:center">
+        <img class="qr" src="../assets/images/qr_zwart.png" alt="QR-code die een e-mail opent"
+             style="width:calc(24*var(--mm)); height:calc(24*var(--mm));">
+        <p class="dm" style="font-size:calc(5.5*var(--pt)); color:var(--zacht);
+                             margin-top:calc(1.5*var(--mm))">Scan om direct te mailen</p>
+      </div>
+
+      <div style="padding:calc(5*var(--mm)) calc(6*var(--mm)); display:flex; flex-direction:column; flex:1">
+        <p class="pf" style="font-size:calc(9*var(--pt)); color:var(--goud)">Mirjam van Steenbrugge</p>
+        <p class="dm" style="font-size:calc(6.5*var(--pt)); line-height:1.7; color:var(--creme);
+                             margin-top:calc(1.5*var(--mm))">
+          Shamballa master · Caropoint methode<br>
+          Behandeling bij mij thuis in Berkel-Enschot, op een eigen behandeltafel.
+        </p>
+
+        <div style="margin-top:calc(4*var(--mm)); font-size:calc(7*var(--pt))" class="dm">
+          <div style="display:flex; justify-content:space-between; color:var(--goud-licht)">
+            <span>Shamballa</span><span style="color:var(--goud); font-weight:500">€25</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; color:var(--goud-licht);
+                      margin-top:calc(1*var(--mm))">
+            <span>Caropoint basis</span><span style="color:var(--goud); font-weight:500">€25</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; color:var(--goud-licht);
+                      margin-top:calc(1*var(--mm))">
+            <span>Caropoint pro</span><span style="color:var(--goud); font-weight:500">€50</span>
+          </div>
+        </div>
+
+        <p class="dm" style="font-size:calc(6.5*var(--pt)); color:var(--creme); margin-top:auto">
+          mvansteenbrugge@gmail.com
+        </p>
+      </div>
+    </div>
+    <figcaption>Achterkant</figcaption>
+  </figure>
+</div>
+
+<p class="voetnoot">
+  <strong>Tarieven op een kaartje binden je.</strong> Verhoogt ze later haar prijs, dan is de
+  stapel waardeloos. Bij 100 tot 250 stuks is dat een acceptabel risico — druk hier nooit
+  duizend van.
+</p>
+
+
+<!-- ══════════════ FLYER A5 ══════════════ -->
+<h2 class="stuk-titel">Flyer <span>Van je pijn af</span></h2>
+<p class="stuk-uitleg">
+  De neerleg-flyer: bedoeld voor iemand die nog nooit van haar gehoord heeft en in één
+  keer moet begrijpen wat het is, wat het kost en waarom de drempel laag is. Het beste
+  adres om deze neer te leggen is de pedicure — daar zitten mensen met voetklachten die
+  al van alles geprobeerd hebben.
+</p>
+<p class="specs">A5, 148 × 210 mm · 250 g zijdemat · dubbelzijdig · oplage 100 à 150</p>
+
+<div class="paar">
+  <figure class="zijde">
+    <div class="drukstuk flyer-a5" style="background:var(--teal); display:flex; flex-direction:column">
+
+      <!-- kop -->
+      <div style="background:var(--teal-diep); padding:calc(9*var(--mm)) 0 calc(7*var(--mm));
+                  display:flex; flex-direction:column; align-items:center; overflow:hidden; flex:none">
+        <img class="sier" src="../assets/images/vleugel.svg" alt=""
+             style="width:calc(70*var(--mm)); right:calc(-14*var(--mm)); top:calc(-6*var(--mm)); opacity:.1">
+        <img src="../assets/images/logo.jpeg" alt=""
+             style="width:calc(26*var(--mm)); height:calc(26*var(--mm)); border-radius:50%;
+                    border:calc(.5*var(--mm)) solid var(--goud); object-fit:cover">
+        <p class="pf" style="font-size:calc(12*var(--pt)); letter-spacing:.16em; color:var(--creme);
+                             margin-top:calc(4*var(--mm))">TACTUS ANGELIS</p>
+        <p class="pf" style="font-size:calc(9*var(--pt)); font-style:italic; color:var(--goud)">by Mirjam</p>
+        <p class="dm" style="font-size:calc(6.5*var(--pt)); letter-spacing:.2em; text-transform:uppercase;
+                             color:var(--zacht); margin-top:calc(2*var(--mm))">
+          Healing · Berkel-Enschot
+        </p>
+      </div>
+
+      <!-- body -->
+      <div style="padding:calc(8*var(--mm)) calc(13*var(--mm)); flex:1; min-height:0; overflow:hidden">
+        <h3 class="pf" style="font-size:calc(17*var(--pt)); font-weight:400; line-height:1.2;
+                              color:var(--creme)">Misschien kan ik jou helpen</h3>
+        <h3 class="pf" style="font-size:calc(17*var(--pt)); font-weight:400; font-style:italic;
+                              line-height:1.2; color:var(--goud); margin-bottom:calc(5*var(--mm))">
+          van je pijn af te komen</h3>
+
+        <p class="dm" style="font-size:calc(8*var(--pt)); line-height:1.62; color:var(--creme);
+                             margin-bottom:calc(3.5*var(--mm))">
+          Nekpijn die maar niet weggaat. Een hielspoor waar je 's ochtends je bed niet
+          uit komt. Rugklachten waar je al van alles voor geprobeerd hebt.
+        </p>
+        <p class="dm" style="font-size:calc(8*var(--pt)); line-height:1.62; color:var(--creme);
+                             margin-bottom:calc(3.5*var(--mm))">
+          Ik ben Mirjam, 51 jaar, uit Berkel-Enschot. Overdag werk ik als
+          activiteitenbegeleidster op een dagbesteding. Daarnaast heb ik een kleine
+          praktijk aan huis, met een eigen behandeltafel.
+        </p>
+        <p class="dm" style="font-size:calc(8*var(--pt)); line-height:1.62; color:var(--creme);
+                             margin-bottom:calc(3.5*var(--mm))">
+          Ik werk met twee dingen. Met de
+          <strong style="color:var(--goud-licht); font-weight:500">Caropoint methode</strong>
+          van Caroline Redeker: drukpunten en het resetten van gewrichten, gericht op
+          lichamelijke pijnklachten. En met
+          <strong style="color:var(--goud-licht); font-weight:500">Shamballa</strong>,
+          energetische healing via handoplegging — daar ben ik master in.
+        </p>
+        <p class="dm" style="font-size:calc(8*var(--pt)); line-height:1.62; color:var(--creme)">
+          Ik zeg er eerlijk bij: in Caropoint sta ik nog aan het begin. Ik heb de
+          basiscursus gedaan, ik oefen veel, en de mensen die ik tot nu toe geholpen
+          heb gingen met een glimlach de deur uit. Meer beloof ik niet. Maar ik doe
+          wel mijn uiterste best.
+        </p>
+      </div>
+
+      <!-- onderbaan -->
+      <div style="background:var(--teal-licht); padding:calc(4.5*var(--mm)) 0; text-align:center; flex:none">
+        <p class="dm" style="font-size:calc(10*var(--pt)); font-weight:500; color:var(--goud)">
+          Een behandeling kost €25.
+        </p>
+        <p class="dm" style="font-size:calc(8*var(--pt)); color:var(--creme); margin-top:calc(1*var(--mm))">
+          Je ligt gewoon met je kleren aan op de tafel.
+        </p>
+      </div>
+    </div>
+    <figcaption>Voorkant</figcaption>
+  </figure>
+
+  <figure class="zijde">
+    <div class="drukstuk flyer-a5" style="background:var(--teal); display:flex; flex-direction:column">
+      <img class="sier" src="../assets/images/sterrenstof.svg" alt=""
+           style="inset:0; width:100%; height:100%; object-fit:cover; opacity:.3">
+
+      <!-- hoe het gaat -->
+      <div style="background:var(--teal-licht); padding:calc(7*var(--mm)) calc(10*var(--mm));
+                  display:flex; gap:calc(7*var(--mm)); align-items:center">
+        <img src="../assets/images/mirjam_profiel.jpeg" alt=""
+             style="width:calc(34*var(--mm)); height:calc(34*var(--mm)); border-radius:50%;
+                    object-fit:cover; object-position:center 28%;
+                    border:calc(.5*var(--mm)) solid var(--goud); flex:none">
+        <div>
+          <p class="pf" style="font-size:calc(11*var(--pt)); color:var(--goud);
+                               margin-bottom:calc(1.5*var(--mm))">Hoe het gaat</p>
+          <p class="dm" style="font-size:calc(8*var(--pt)); line-height:1.65; color:var(--creme)">
+            Je mailt me. We bellen of appen kort over je klacht. Dan spreken we een moment
+            af dat jou uitkomt — 's avonds of in het weekend kan meestal ook.
+          </p>
+        </div>
+      </div>
+
+      <!-- drie behandelingen -->
+      <div style="display:flex; gap:calc(5*var(--mm)); padding:calc(8*var(--mm)) calc(10*var(--mm))">
+        <div style="flex:1">
+          <p style="font-size:calc(11*var(--pt)); color:var(--goud)">✦</p>
+          <p class="dm" style="font-size:calc(8*var(--pt)); font-weight:500; color:var(--goud-licht);
+                               margin:calc(1.5*var(--mm)) 0">Caropoint basis — €25</p>
+          <p class="dm" style="font-size:calc(7*var(--pt)); line-height:1.6; color:var(--creme)">
+            Drukpunten en het resetten van gewrichten. Gericht op de plek waar het zit:
+            nek, rug, schouder, hiel.
+          </p>
+        </div>
+        <div style="flex:1">
+          <p style="font-size:calc(11*var(--pt)); color:var(--goud)">✦</p>
+          <p class="dm" style="font-size:calc(8*var(--pt)); font-weight:500; color:var(--goud-licht);
+                               margin:calc(1.5*var(--mm)) 0">Caropoint pro — €50</p>
+          <p class="dm" style="font-size:calc(7*var(--pt)); line-height:1.6; color:var(--creme)">
+            Uitgebreider, meer technieken, als de klacht om meer vraagt.
+          </p>
+        </div>
+        <div style="flex:1">
+          <p style="font-size:calc(11*var(--pt)); color:var(--goud)">✦</p>
+          <p class="dm" style="font-size:calc(8*var(--pt)); font-weight:500; color:var(--goud-licht);
+                               margin:calc(1.5*var(--mm)) 0">Shamballa — €25</p>
+          <p class="dm" style="font-size:calc(7*var(--pt)); line-height:1.6; color:var(--creme)">
+            Energetische healing via handoplegging. Zacht, je houdt je kleren aan.
+            Voor rust, balans en herstel.
+          </p>
+        </div>
+      </div>
+
+      <div class="haarlijn" style="width:calc(128*var(--mm)); margin:0 auto"></div>
+
+      <!-- citaat -->
+      <div style="padding:calc(8*var(--mm)) calc(16*var(--mm)); text-align:center; flex:1;
+                  display:flex; flex-direction:column; justify-content:center">
+        <p class="pf" style="font-size:calc(13*var(--pt)); font-style:italic; line-height:1.5;
+                             color:var(--goud-licht)">
+          “Het lijkt wel of ik op wolken loop. Ik voel me zoveel lichter.”
+        </p>
+        <p class="dm" style="font-size:calc(6.5*var(--pt)); color:var(--zacht);
+                             margin-top:calc(3*var(--mm))">— na een eerste behandeling</p>
+      </div>
+
+      <!-- contact -->
+      <div style="background:var(--teal-diep); padding:calc(7*var(--mm)) calc(10*var(--mm));
+                  display:flex; justify-content:space-between; align-items:center;
+                  gap:calc(6*var(--mm))">
+        <div>
+          <p class="pf" style="font-size:calc(11*var(--pt)); color:var(--goud);
+                               margin-bottom:calc(1.5*var(--mm))">Zin om het te proberen?</p>
+          <p class="dm" style="font-size:calc(7.5*var(--pt)); line-height:1.6; color:var(--creme)">
+            Stuur me een mailtje, dan zoeken we samen een moment.<br>
+            <strong style="color:var(--goud-licht); font-weight:500">mvansteenbrugge@gmail.com</strong><br>
+            Berkel-Enschot, bij Tilburg
+          </p>
+        </div>
+        <img class="qr" src="../assets/images/qr_zwart.png" alt="QR-code die een e-mail opent"
+             style="width:calc(38*var(--mm)); height:calc(38*var(--mm));; flex:none">
+      </div>
+
+      <p class="dm" style="font-size:calc(5.5*var(--pt)); line-height:1.5; color:var(--zacht);
+                           opacity:.75; padding:calc(3*var(--mm)) calc(10*var(--mm)); text-align:center">
+        Een behandeling is een aanvulling, geen vervanging van medische zorg. Heb je klachten,
+        blijf altijd bij je huisarts of specialist onder behandeling.
+      </p>
+    </div>
+    <figcaption>Achterkant</figcaption>
+  </figure>
+</div>
+
+<p class="voetnoot">
+  <strong>De kleine regel onderaan</strong> is geen juridische franje. Mirjam is niet
+  BIG-geregistreerd; beloftes over genezing mag ze niet doen. Deze regel beschermt haar,
+  en bij deze doelgroep verhoogt hij juist het vertrouwen.
+</p>
+
+
+<!-- ══════════════ A6 MEEGEEFKAART ══════════════ -->
+<h2 class="stuk-titel">Meegeefkaart <span>Tot de volgende keer</span></h2>
+<p class="stuk-uitleg">
+  Geen flyer om neer te leggen, maar een kaartje dat iedereen ná de behandeling meekrijgt.
+  Het doet drie dingen tegelijk: het vertelt wat je die dag beter wel en niet doet, het is
+  haar afsprakenkaartje, en het nodigt uit om door te geven aan iemand met dezelfde klacht.
+</p>
+<p class="specs">A6, 105 × 148 mm · 300 g zijdemat · dubbelzijdig · oplage 100</p>
+
+<div class="paar">
+  <figure class="zijde">
+    <div class="drukstuk kaart-a6" style="background:var(--teal); display:flex; flex-direction:column;
+         align-items:center; padding:calc(6*var(--mm)) calc(8*var(--mm))">
+
+      <img src="../assets/images/veer.svg" alt="" style="width:calc(13*var(--mm))">
+
+      <h3 class="pf" style="font-size:calc(13.5*var(--pt)); font-weight:400; color:var(--creme);
+                            margin-top:calc(2*var(--mm))">Je bent geweest.</h3>
+      <h3 class="pf" style="font-size:calc(13.5*var(--pt)); font-weight:400; font-style:italic;
+                            color:var(--goud)">Wat nu?</h3>
+
+      <div style="align-self:stretch; margin-top:calc(4*var(--mm))">
+        <p class="dm" style="font-size:calc(8*var(--pt)); font-weight:500; color:var(--goud-licht)">
+          ✦&nbsp; Drink vandaag wat extra water.</p>
+        <p class="dm" style="font-size:calc(7*var(--pt)); line-height:1.5; color:var(--creme);
+                             margin:calc(.6*var(--mm)) 0 calc(2.2*var(--mm)) calc(4.5*var(--mm))">
+          Je lichaam is aan het werk gezet en ruimt makkelijker op met genoeg vocht.</p>
+
+        <p class="dm" style="font-size:calc(8*var(--pt)); font-weight:500; color:var(--goud-licht)">
+          ✦&nbsp; Neem het rustig aan.</p>
+        <p class="dm" style="font-size:calc(7*var(--pt)); line-height:1.5; color:var(--creme);
+                             margin:calc(.6*var(--mm)) 0 calc(2.2*var(--mm)) calc(4.5*var(--mm))">
+          Ga vandaag niet meteen de tuin om en plan geen zware training.</p>
+
+        <p class="dm" style="font-size:calc(8*var(--pt)); font-weight:500; color:var(--goud-licht)">
+          ✦&nbsp; Het mag even napraten in je lijf.</p>
+        <p class="dm" style="font-size:calc(7*var(--pt)); line-height:1.5; color:var(--creme);
+                             margin:calc(.6*var(--mm)) 0 calc(2.2*var(--mm)) calc(4.5*var(--mm))">
+          Wat moeheid, een zwaar gevoel of juist heel licht — dat hoort erbij en zakt
+          meestal binnen een dag of twee.</p>
+
+        <p class="dm" style="font-size:calc(8*var(--pt)); font-weight:500; color:var(--goud-licht)">
+          ✦&nbsp; Vertrouw je het niet?</p>
+        <p class="dm" style="font-size:calc(7*var(--pt)); line-height:1.5; color:var(--creme);
+                             margin:calc(.8*var(--mm)) 0 0 calc(5*var(--mm))">
+          Wordt de pijn erger of krijg je het benauwd? Bel je huisarts. Altijd. En laat
+          het mij daarna even weten.</p>
+      </div>
+
+      <p class="pf" style="font-size:calc(8.5*var(--pt)); font-style:italic; color:var(--goud);
+                           margin-top:calc(3.5*var(--mm))">Fijn dat je het aandurfde.</p>
+    </div>
+    <figcaption>Voorkant</figcaption>
+  </figure>
+
+  <figure class="zijde">
+    <div class="drukstuk kaart-a6" style="background:var(--teal-licht); display:flex; flex-direction:column">
+
+      <div style="padding:calc(8*var(--mm)) calc(9*var(--mm)) calc(6*var(--mm))">
+        <p class="pf" style="font-size:calc(11*var(--pt)); color:var(--goud);
+                             margin-bottom:calc(4*var(--mm))">Volgende afspraak</p>
+        <p class="dm" style="font-size:calc(7.5*var(--pt)); color:var(--creme); line-height:2.4">
+          Datum <span style="border-bottom:1px dotted var(--goud); display:inline-block;
+                             width:calc(26*var(--mm))"></span>
+          &nbsp; Tijd <span style="border-bottom:1px dotted var(--goud); display:inline-block;
+                             width:calc(16*var(--mm))"></span><br>
+          Behandeling <span style="border-bottom:1px dotted var(--goud); display:inline-block;
+                             width:calc(46*var(--mm))"></span>
+        </p>
+      </div>
+
+      <div class="haarlijn" style="width:calc(87*var(--mm)); margin:0 auto"></div>
+
+      <div style="padding:calc(6*var(--mm)) calc(9*var(--mm)); flex:1">
+        <p class="pf" style="font-size:calc(10*var(--pt)); color:var(--goud);
+                             margin-bottom:calc(2.5*var(--mm))">Ken je iemand met dezelfde klacht?</p>
+        <p class="dm" style="font-size:calc(7.5*var(--pt)); line-height:1.7; color:var(--creme)">
+          Geef dit kaartje aan diegene door. Een eerste behandeling kost €25 en duurt
+          ongeveer een uur. Je hoeft je niet uit te kleden en je hoeft nergens in te geloven.
+        </p>
+      </div>
+
+      <div style="background:var(--teal-diep); padding:calc(5*var(--mm)) calc(9*var(--mm));
+                  display:flex; justify-content:space-between; align-items:center;
+                  gap:calc(4*var(--mm))">
+        <div style="display:flex; align-items:center; gap:calc(3.5*var(--mm))">
+          <img src="../assets/images/logo.jpeg" alt=""
+               style="width:calc(16*var(--mm)); height:calc(16*var(--mm)); border-radius:50%;
+                      border:calc(.4*var(--mm)) solid var(--goud); object-fit:cover; flex:none">
+          <div>
+            <p class="pf" style="font-size:calc(7.5*var(--pt)); letter-spacing:.14em;
+                                 color:var(--creme)">TACTUS ANGELIS</p>
+            <p class="dm" style="font-size:calc(6*var(--pt)); line-height:1.6; color:var(--zacht)">
+              Mirjam van Steenbrugge<br>
+              mvansteenbrugge@gmail.com
+            </p>
+          </div>
+        </div>
+        <img class="qr" src="../assets/images/qr_zwart.png" alt="QR-code die een e-mail opent"
+             style="width:calc(26*var(--mm)); height:calc(26*var(--mm));; flex:none">
+      </div>
+    </div>
+    <figcaption>Achterkant</figcaption>
+  </figure>
+</div>
+
+
+<footer class="slot">
+  <p>Deze voorbeelden zijn schermweergaves, geen drukklare bestanden. Voor de drukker
+  komt daar nog 3 mm afloop rondom bij, moeten de kleuren naar CMYK en moeten de
+  lettertypen worden ingesloten. Het diepe petrolgroen en het goud zijn precies de
+  twee kleuren die in druk kunnen tegenvallen, dus vraag altijd eerst een kleurproef
+  aan voordat de hele oplage gedrukt wordt.</p>
+</footer>
+
+</div>
+
+</body>
+</html>
