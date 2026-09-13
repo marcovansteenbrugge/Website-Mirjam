@@ -91,6 +91,9 @@
 
   function foutRegel(fout) {
     if (FOUT_TEKST[fout.code]) return FOUT_TEKST[fout.code];
+    // Kent de app deze code niet (bijv. een nieuwe code van de server), dan is het
+    // Nederlandse bericht van de server zelf beter dan een vage standaardzin.
+    if (fout.serverBericht) return fout.serverBericht;
     if (fout.httpStatus >= 500) return 'De server heeft een storing (code ' + fout.httpStatus + ').';
     if (fout.httpStatus >= 400) return 'De server wees de opdracht af (code ' + fout.httpStatus + ').';
     return 'Er ging iets mis waar de app geen naam voor heeft.';
@@ -247,7 +250,7 @@
       el('accu-balk-label').textContent = 'Laadstatus onbekend';
     } else {
       const begrensd = Math.max(0, Math.min(100, soc));
-      socGetal.textContent = getal(soc, soc % 1 === 0 ? 0 : 1);
+      socGetal.textContent = getal(Math.round(soc));   // hele procenten: leest sneller in het donker
       socVak.className = 'soc' + (begrensd <= 15 ? ' soc--laag' : begrensd <= 35 ? ' soc--midden' : '');
       vul.style.width = begrensd + '%';
       vul.className = 'accu-balk-vul' + (begrensd <= 15 ? ' laag' : begrensd <= 35 ? ' midden' : '');

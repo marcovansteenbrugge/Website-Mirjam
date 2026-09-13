@@ -85,18 +85,22 @@
     rate_limited: 'Te veel opdrachten achter elkaar. Probeer het straks opnieuw.',
     not_plugged_in: 'De auto hangt niet aan de laadkabel.',
     upstream_error: 'Nissan geeft een storing terug.',
-    invalid_request: 'De opdracht klopt niet (temperatuur moet een hele graad van 16 t/m 26 zijn).'
+    invalid_request: 'De opdracht klopt niet (temperatuur moet een hele graad van 16 t/m 26 zijn).',
+    // Niet in de codelijst van het contract: test of de app een onbekende code netjes doorgeeft.
+    subscription_expired: 'Je Nissan Connect-abonnement lijkt verlopen. Verleng het in de Nissan-app.'
   };
   const HERHAALBAAR = {
     unauthorized: false, nissan_auth_failed: false, vehicle_asleep: true,
-    rate_limited: true, not_plugged_in: false, upstream_error: true, invalid_request: false
+    rate_limited: true, not_plugged_in: false, upstream_error: true, invalid_request: false,
+    subscription_expired: false
   };
   const HTTP_CODE = {
     unauthorized: 401, nissan_auth_failed: 502, vehicle_asleep: 503,
-    rate_limited: 429, not_plugged_in: 409, upstream_error: 502, invalid_request: 400
+    rate_limited: 429, not_plugged_in: 409, upstream_error: 502, invalid_request: 400,
+    subscription_expired: 403
   };
   /* Welke fouten komen meteen terug, en welke pas als de job mislukt? */
-  const METEEN = ['unauthorized', 'nissan_auth_failed', 'rate_limited', 'not_plugged_in', 'invalid_request'];
+  const METEEN = ['unauthorized', 'nissan_auth_failed', 'rate_limited', 'not_plugged_in', 'invalid_request', 'subscription_expired'];
 
   const json = (data, status) =>
     new Response(JSON.stringify(data), {
@@ -222,6 +226,7 @@
     ['nissan_auth_failed', 'Nissan-login mislukt (502)'],
     ['invalid_request', 'opdracht ongeldig (400)'],
     ['unauthorized', 'token geweigerd (401)'],
+    ['subscription_expired', 'onbekende code van de server (403)'],
     ['netwerk', 'server onbereikbaar'],
     ['timeout', 'job eindigt in timeout'],
     ['nooit', 'auto antwoordt nooit (120 s-limiet)']
