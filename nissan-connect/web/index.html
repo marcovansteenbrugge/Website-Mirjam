@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ariya — accu &amp; voorverwarmen</title>
+<meta name="description" content="Bekijk de accustand van de Ariya en start het voorverwarmen.">
+<meta name="theme-color" content="#080B0E">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex, nofollow">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ariya">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<a class="skip-link" href="#hoofd">Naar de inhoud</a>
+
+<!-- ── Tokenscherm: alleen zichtbaar zolang er geen token is ─────────── -->
+<section id="token-scherm" class="token-scherm" aria-labelledby="token-titel" hidden>
+  <form id="token-form" class="token-kaart" novalidate>
+    <h1 id="token-titel" class="token-titel">Ariya</h1>
+    <p class="token-uitleg">
+      Deze app praat met je eigen server. Voer één keer het app-token in;
+      het blijft daarna in deze browser bewaard.
+    </p>
+
+    <label class="veld-label" for="token-invoer">App-token</label>
+    <input id="token-invoer" class="veld" type="password" inputmode="text"
+           autocomplete="off" autocapitalize="off" spellcheck="false"
+           required aria-describedby="token-fout">
+
+    <p class="veld-rij">
+      <input id="token-tonen" type="checkbox">
+      <label for="token-tonen">Token tonen</label>
+    </p>
+
+    <p id="token-fout" class="token-fout" role="alert"></p>
+
+    <button id="token-opslaan" class="knop knop--primair" type="submit">Opslaan en verbinden</button>
+  </form>
+</section>
+
+<!-- ── De app zelf ───────────────────────────────────────────────────── -->
+<div id="app" class="app" hidden>
+
+  <header class="kop">
+    <div class="kop-titels">
+      <h1 class="kop-naam" id="auto-naam">Ariya</h1>
+      <p class="kop-model" id="auto-model">Verbinden…</p>
+    </div>
+    <button id="menu-knop" class="knop knop--icoon" type="button"
+            aria-expanded="false" aria-controls="menu-paneel" aria-label="Instellingen">
+      <span aria-hidden="true">⚙</span>
+    </button>
+  </header>
+
+  <div id="menu-paneel" class="menu-paneel" hidden>
+    <p class="menu-regel" id="menu-verbinding">Verbonden met de server.</p>
+    <button id="token-wissen" class="knop knop--rand" type="button">Token wissen en opnieuw invoeren</button>
+  </div>
+
+  <main id="hoofd" class="hoofd">
+
+    <!-- Meldingen (fouten, bevestigingen) -->
+    <div id="melding" class="melding" role="status" aria-live="polite" hidden>
+      <p class="melding-tekst" id="melding-tekst"></p>
+      <p class="melding-detail" id="melding-detail" hidden></p>
+    </div>
+
+    <!-- ── Accu ─────────────────────────────────────────────────────── -->
+    <section class="kaart kaart--accu" aria-labelledby="accu-titel">
+      <h2 id="accu-titel" class="kaart-titel">Accu</h2>
+
+      <p id="leeftijd" class="leeftijd leeftijd--onbekend" aria-live="polite">
+        <span class="leeftijd-punt" aria-hidden="true"></span>
+        <span id="leeftijd-tekst">Nog niet opgehaald</span>
+      </p>
+
+      <div class="accu-hoofd">
+        <p class="soc" id="soc">
+          <span class="soc-getal" id="soc-getal">–</span><span class="soc-teken" aria-hidden="true">%</span>
+        </p>
+        <div class="accu-naast">
+          <p class="bereik"><span class="bereik-getal" id="bereik-getal">–</span> <span class="bereik-eenheid">km</span></p>
+          <p class="bereik-label">actieradius</p>
+        </div>
+      </div>
+      <p class="visueel-verborgen" id="soc-uitleg">Laadstatus wordt hieronder ook als balk getoond.</p>
+
+      <div class="accu-balk" id="accu-balk" role="img" aria-labelledby="accu-balk-label">
+        <span class="accu-balk-vul" id="accu-balk-vul"></span>
+      </div>
+      <p class="visueel-verborgen" id="accu-balk-label">Laadstatus onbekend</p>
+
+      <ul class="chips" id="chips">
+        <li class="chip chip--neutraal" id="chip-stekker">Stekker onbekend</li>
+        <li class="chip chip--neutraal" id="chip-laden">Laadstatus onbekend</li>
+        <li class="chip chip--stil" id="chip-soh" hidden>Accugezondheid –</li>
+      </ul>
+
+      <button id="ververs-knop" class="knop knop--primair knop--groot" type="button">
+        Ververs bij de auto
+      </button>
+      <p class="knop-noot">Vraagt een verse meting aan de auto. Duurt 10 tot 60 seconden.</p>
+
+      <div id="ververs-voortgang" class="voortgang" hidden>
+        <div class="voortgang-spoor" role="progressbar" aria-labelledby="ververs-voortgang-tekst"
+             aria-valuemin="0" aria-valuemax="90" aria-valuenow="0" id="ververs-balk">
+          <span class="voortgang-vul" id="ververs-vul"></span>
+        </div>
+        <p class="voortgang-tekst" id="ververs-voortgang-tekst" aria-live="polite">Bezig…</p>
+      </div>
+    </section>
+
+    <!-- ── Voorverwarmen ────────────────────────────────────────────── -->
+    <section class="kaart kaart--klimaat" aria-labelledby="klimaat-titel">
+      <h2 id="klimaat-titel" class="kaart-titel">Voorverwarmen</h2>
+
+      <p id="klimaat-status" class="klimaat-status" aria-live="polite">Status onbekend</p>
+
+      <div class="temp-regel">
+        <button id="temp-min" class="knop knop--stap" type="button" aria-label="Halve graad kouder">
+          <span aria-hidden="true">−</span>
+        </button>
+        <p class="temp-waarde" id="temp-waarde" aria-hidden="true">21,0<span class="temp-eenheid">°C</span></p>
+        <button id="temp-plus" class="knop knop--stap" type="button" aria-label="Halve graad warmer">
+          <span aria-hidden="true">+</span>
+        </button>
+      </div>
+
+      <label class="veld-label veld-label--midden" for="temp-schuif">Gewenste temperatuur</label>
+      <input id="temp-schuif" class="schuif" type="range"
+             min="16" max="26" step="0.5" value="21"
+             aria-describedby="temp-bereik-noot">
+      <p class="schuif-schaal" aria-hidden="true"><span>16&nbsp;°C</span><span>21&nbsp;°C</span><span>26&nbsp;°C</span></p>
+      <p class="knop-noot" id="temp-bereik-noot">Van 16,0 tot 26,0 °C, in stappen van een halve graad.</p>
+
+      <div class="knop-paar">
+        <button id="klimaat-start" class="knop knop--primair knop--groot" type="button">
+          Voorverwarmen starten
+        </button>
+        <button id="klimaat-stop" class="knop knop--rand knop--groot" type="button">
+          Stoppen
+        </button>
+      </div>
+
+      <div id="klimaat-voortgang" class="voortgang" hidden>
+        <div class="voortgang-spoor" role="progressbar" aria-labelledby="klimaat-voortgang-tekst"
+             aria-valuemin="0" aria-valuemax="90" aria-valuenow="0" id="klimaat-balk">
+          <span class="voortgang-vul" id="klimaat-vul"></span>
+        </div>
+        <p class="voortgang-tekst" id="klimaat-voortgang-tekst" aria-live="polite">Bezig…</p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="voet">
+    <p id="voet-tekst">Eigen server · geen gegevens naar derden</p>
+  </footer>
+</div>
+
+<script src="mock-api.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
