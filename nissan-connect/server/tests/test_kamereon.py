@@ -380,7 +380,37 @@ async def test_bearer_header_wordt_meegestuurd() -> None:
     finally:
         await client.aclose()
     assert verzoeken[0].headers["Authorization"] == "Bearer nep-token"
-    assert verzoeken[0].headers["Content-Type"] == "application/vnd.api+json"
+
+
+async def test_elke_server_krijgt_zijn_eigen_mediatype() -> None:
+    """De twee Nissan-servers spreken niet hetzelfde formaat.
+
+    De car-adapter levert JSON:API; bff-web is een gewone web-API en antwoordt
+    406 Not Acceptable als je om JSON:API vraagt. Dat kostte een echte Ariya uit
+    2022 een onbruikbare accuweergave, dus dit moet vastliggen.
+    """
+    verzoeken: list[httpx.Request] = []
+    client = _make_client(_routed(verzoeken))
+    try:
+        await client.get_battery()
+        await client.get_climate()
+    finally:
+        await client.aclose()
+
+    gezien = {"bff-web": False, "car-adapter": False}
+    for verzoek in verzoeken:
+        pad = verzoek.url.path
+        if "/bff-web/" in pad:
+            gezien["bff-web"] = True
+            assert verzoek.headers["Accept"] == "application/json", pad
+            assert verzoek.headers["Content-Type"] == "application/json", pad
+        elif "/car-adapter/" in pad:
+            gezien["car-adapter"] = True
+            assert verzoek.headers["Accept"] == "application/vnd.api+json", pad
+            assert verzoek.headers["Content-Type"] == "application/vnd.api+json", pad
+
+    assert gezien["bff-web"], "geen enkel bff-web-verzoek gezien"
+    assert gezien["car-adapter"], "geen enkel car-adapter-verzoek gezien"
 
 
 async def test_tokenwissel_stuurt_het_id_token_kaal_mee() -> None:

@@ -96,6 +96,10 @@ EU_COUNTRIES: Final[frozenset[str]] = frozenset(
 )
 
 JSON_API_CONTENT_TYPE: Final[str] = "application/vnd.api+json"
+#: bff-web is een gewone web-API en antwoordt 406 Not Acceptable als je om
+#: JSON:API vraagt. Geverifieerd op een Ariya uit 2022: v3/battery-status gaf
+#: consequent 406 met vnd.api+json en de car-adapter gaf 200 met hetzelfde token.
+PLAIN_JSON_CONTENT_TYPE: Final[str] = "application/json"
 
 #: Feature-ID's uit `Feature` in kamereon_const.py. Deze lijst is tegelijk de
 #: *abonnementsstatus*: loopt NissanConnect Services af, dan kun je nog gewoon
@@ -508,10 +512,16 @@ class KamereonVehicleClient(VehicleClient):
         last_error: ApiError | None = None
         for attempt in range(2):
             token = await self._ensure_token(force=attempt > 0)
+            # De twee Nissan-servers spreken niet hetzelfde formaat: de
+            # car-adapter levert JSON:API, bff-web gewoon JSON. Hetzelfde
+            # Accept naar allebei sturen levert een 406 op bij bff-web.
+            media_type = (
+                PLAIN_JSON_CONTENT_TYPE if "/bff-web/" in url else JSON_API_CONTENT_TYPE
+            )
             headers = {
                 "Authorization": f"Bearer {token}",
-                "Content-Type": JSON_API_CONTENT_TYPE,
-                "Accept": JSON_API_CONTENT_TYPE,
+                "Content-Type": media_type,
+                "Accept": media_type,
             }
             try:
                 response = await self._client.request(
@@ -674,6 +684,47 @@ class KamereonVehicleClient(VehicleClient):
             battery_capacity_kwh=float(capacity) if isinstance(capacity, (int, float)) else None,
         )
 
+    async def _fetch_battery_body(
+        self, vin: str, params: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Haal de ruwe accugegevens op, langs meerdere Nissan-endpoints.
+
+        Welke route werkt verschilt per auto en per modeljaar. Op een Ariya uit
+        2022 antwoordt `bff-web/v3` consequent 406, terwijl de car-adapter met
+        exact hetzelfde token wel gegevens teruggeeft. Daarom worden de routes
+        op volgorde geprobeerd in plaats van er één te veronderstellen.
+
+        Een fout die niets met de route te maken heeft -- een geweigerde sessie
+        of een verlopen abonnement -- wordt meteen doorgegeven: die lost zich
+        niet op door een ander adres te proberen.
+        """
+        kandidaten: list[tuple[str, dict[str, Any] | None]] = [
+            (f"{self._settings['user_base_url']}v3/cars/{vin}/battery-status", params or None),
+            (f"{self._settings['car_adapter_base_url']}v2/cars/{vin}/battery-status", None),
+            (f"{self._settings['car_adapter_base_url']}v1/cars/{vin}/battery-status", None),
+        ]
+
+        laatste: ApiError | None = None
+        for url, p in kandidaten:
+            try:
+                body = await self._request("GET", url, params=p)
+            except ApiError as exc:
+                if exc.code in ("nissan_auth_failed", "rate_limited"):
+                    raise
+                laatste = exc
+                _LOGGER.info(
+                    "Accu-endpoint %s gaf geen gegevens; volgende route proberen.",
+                    urlparse(url).path,
+                )
+                continue
+
+            if body:
+                _LOGGER.debug("Accugegevens opgehaald via %s", urlparse(url).path)
+                return body
+            laatste = ApiError("upstream_error")
+
+        raise laatste or ApiError("upstream_error")
+
     async def get_battery(self) -> BatteryState:
         """Accustand via de v3-API die de Ariya gebruikt.
 
@@ -689,12 +740,8 @@ class KamereonVehicleClient(VehicleClient):
         if can_gen is not None:
             params["canGen"] = can_gen
 
-        body = await self._request(
-            "GET",
-            f"{self._settings['user_base_url']}v3/cars/{vin}/battery-status",
-            params=params,
-        )
-        attributes = (body.get("data") or {}).get("attributes") or {}
+        body = await self._fetch_battery_body(vin, params)
+        attributes = (body.get("data") or {}).get("attributes") or body.get("attributes") or {}
 
         soc = attributes.get("batteryLevel")
         # Geverifieerd: de v3-API levert het bereik als `batteryAutonomy`,
