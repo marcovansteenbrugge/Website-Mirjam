@@ -41,7 +41,10 @@ class Settings(BaseSettings):
     poll_min_interval_seconds: int = Field(default=900, ge=0)
 
     # --- Job-afhandeling (geavanceerd) ---------------------------------------
-    job_timeout_seconds: float = Field(default=75.0, gt=0)
+    # Een verse meting duurt in de praktijk tientallen seconden tot twee minuten
+    # (evcc geeft het na 2 minuten op). Blijf wel binnen het venster waarin de
+    # frontend pollt.
+    job_timeout_seconds: float = Field(default=110.0, gt=0)
     job_poll_interval_seconds: float = Field(default=10.0, gt=0)
     job_ttl_seconds: float = Field(default=600.0, gt=0)
 

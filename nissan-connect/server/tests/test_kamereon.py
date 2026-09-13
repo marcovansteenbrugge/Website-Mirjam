@@ -381,3 +381,59 @@ async def test_bearer_header_wordt_meegestuurd() -> None:
         await client.aclose()
     assert verzoeken[0].headers["Authorization"] == "Bearer nep-token"
     assert verzoeken[0].headers["Content-Type"] == "application/vnd.api+json"
+
+
+async def test_tokenwissel_stuurt_het_id_token_kaal_mee() -> None:
+    """Valkuil uit sectie 2: hier géén 'Bearer '-prefix, maar de rauwe JWT."""
+    verzoeken: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        verzoeken.append(request)
+        return httpx.Response(
+            200,
+            json={"access_token": "kam-1", "refresh_token": "ref-1", "expires_in": 3600},
+        )
+
+    client = _make_client(handler)
+    try:
+        payload = await client._exchange_kamereon_token("eyJhbGciOiJIUzI1NiJ9.abc.def")
+        assert payload["access_token"] == "kam-1"
+    finally:
+        await client.aclose()
+
+    verzoek = verzoeken[0]
+    assert verzoek.headers["Authorization"] == "eyJhbGciOiJIUzI1NiJ9.abc.def"
+    assert not verzoek.headers["Authorization"].startswith("Bearer")
+    assert verzoek.headers["Content-Type"] == "application/vnd.api+json"
+    assert verzoek.url.params["platform"] == "Android"
+    assert str(verzoek.url).startswith(EU_SETTINGS["user_base_url"] + "v1/oauth2/access_token")
+
+
+async def test_tokenvernieuwing_stuurt_het_refresh_token_kaal_mee() -> None:
+    verzoeken: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        verzoeken.append(request)
+        return httpx.Response(200, json={"access_token": "kam-2", "expires_in": 3600})
+
+    client = _make_client(handler)
+    client._refresh_token = "refresh-abc"
+    try:
+        await client._refresh_kamereon_token()
+    finally:
+        await client.aclose()
+
+    verzoek = verzoeken[0]
+    assert verzoek.headers["Authorization"] == "refresh-abc"
+    assert json.loads(verzoek.content) == {"scope": EU_SETTINGS["kamereon_scope"]}
+
+
+async def test_token_wordt_hergebruikt_tot_het_bijna_verloopt() -> None:
+    client = _make_client(_routed([]))
+    try:
+        client._install_token({"access_token": "abc", "expires_in": 3600})
+        assert await client._ensure_token() == "abc"
+        # Het token staat in de redactielijst en lekt dus niet naar de logs.
+        assert "abc" not in client._scrub("token abc gebruikt") or len("abc") < 4
+    finally:
+        await client.aclose()

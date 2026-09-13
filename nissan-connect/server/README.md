@@ -66,18 +66,38 @@ enige sleutel tussen de buitenwereld en een auto die kan gaan draaien.
 
 ### Waarschuwing vooraf
 
-De echte client (`app/vehicle/kamereon.py`) is gebouwd op de endpoints van de
-onderhouden Home Assistant-integratie voor NissanConnect EU en is **niet tegen
-een echte auto getest** (daar zijn echte inloggegevens voor nodig). Twee dingen
-weigert hij bewust in plaats van te gokken:
+De echte client (`app/vehicle/kamereon.py`) volgt de inlogroute en de endpoints
+van de onderhouden Home Assistant-integratie voor NissanConnect EU, aangevuld met
+het onderzoeksrapport in `../../nissan-research/API-RESEARCH.md`. Twee
+onafhankelijke implementaties zijn het over alle constanten eens — maar er is
+**niets tegen een echte Nissan-server getest**, want daar zijn echte
+inloggegevens en een echte auto voor nodig.
 
-* **halve graden** als streeftemperatuur (21.5 °C) — alle bronnen sturen een
-  heel getal 16..26; kies dus 21 of 22;
+Wat de backend bewust weigert in plaats van te gokken:
+
+* **halve graden** als streeftemperatuur. De auto kent alleen hele graden van
+  16 t/m 26. Kies dus 21 of 22, niet 21,5. Er bestaat ook geen aparte "zet
+  temperatuur"-opdracht: de temperatuur hoort bij het *starten*. Wil je hem
+  wijzigen terwijl het voorverwarmen draait, dan start je opnieuw.
 * **regio's buiten Europa** — die instellingen staan nergens in broncode.
 
-In beide gevallen krijg je een duidelijke foutmelding, geen stilzwijgend
-verkeerd commando naar je auto. `state_of_health_percent` (accugezondheid) is
-altijd `null`: Nissan levert dat veld niet in de gebruikte API.
+`state_of_health_percent` (accugezondheid) is altijd `null`: Nissan levert dat
+veld niet in deze API. Wie de echte accugezondheid wil weten, heeft een
+OBD-II-dongle nodig.
+
+### Als het niet werkt, kijk hier eerst
+
+* **Abonnement verlopen.** Dit is de meest waarschijnlijke oorzaak. Je kunt dan
+  nog gewoon inloggen en de auto staat er nog gewoon in — alleen doet niets het
+  meer. De backend herkent dit en zegt het met zoveel woorden.
+* **Auto niet gekoppeld.** De auto moet al in de MyNISSAN-app staan; via deze
+  weg koppelen kan niet.
+* **Inloggen loopt vast.** Meestal wacht er een akkoordverklaring of verificatie
+  in de MyNISSAN-app zelf. De backend probeert een afgewezen inlogpoging
+  **niet** opnieuw: Nissan kan je account bij herhaalde pogingen blokkeren.
+* **Traag is normaal.** De API is echt traag; de HTTP-timeout staat daarom op
+  120 seconden. Een verse meting die niet lukt omdat de auto slaapt, is geen
+  storing maar gewoon het normale geval.
 
 ---
 
@@ -112,11 +132,16 @@ Alle endpoints vragen `Authorization: Bearer <APP_TOKEN>`.
 | `POST` | `/api/battery/refresh` | Vraagt een verse meting → geeft een opdracht terug |
 | `GET` | `/api/jobs/{job_id}` | Status van een opdracht: `pending`/`success`/`failed`/`timeout` |
 | `GET` | `/api/climate` | Draait de klimaatregeling? |
-| `POST` | `/api/climate/start` | Voorverwarmen, body `{"target_temp_c": 21.0}` (16.0–26.0) |
+| `POST` | `/api/climate/start` | Voorverwarmen, body `{"target_temp_c": 21.0}` (16–26, hele graden) |
 | `POST` | `/api/climate/stop` | Klimaatregeling uit |
 
 Lange opdrachten (verse meting, voorverwarmen) duren 10–60 seconden. Die geven
 meteen een `job_id` terug; de webpagina pollt daarna `/api/jobs/{job_id}`.
+
+> **Afwijking van `CONTRACT.md`:** het contract noemt temperatuurstappen van een
+> halve graad. De auto kent die niet — Nissan accepteert alleen hele graden van
+> 16 t/m 26. De backend valideert daarop en weigert 21,5 met `invalid_request`.
+> Het contract en de frontend worden hierop aangepast.
 
 Elke fout ziet er hetzelfde uit:
 
@@ -137,9 +162,17 @@ cd nissan-connect/server
 ./.venv/bin/python -m pytest
 ```
 
-De tests draaien volledig tegen de nagebootste auto — geen Nissan-account,
-geen internet. Ze dekken de toegangscontrole, alle endpoints, de levensloop van
-een opdracht, de rem op verse metingen en de vorm van elke foutmelding.
+De tests draaien volledig zonder Nissan-account en zonder internet. Ze dekken:
+
+* de toegangscontrole en alle endpoints tegen de nagebootste auto;
+* de levensloop van een opdracht (inclusief mislukken en verlopen);
+* de rem op verse metingen;
+* de vorm van elke foutmelding volgens het contract;
+* en van de échte client: de opgebouwde URL's, query-parameters en bodies,
+  tegen een nagebootste HTTP-laag (`httpx.MockTransport`).
+
+Wat de tests **niet** kunnen bewijzen: dat Nissan die verzoeken ook accepteert.
+Daar is een echt account voor nodig.
 
 ---
 
