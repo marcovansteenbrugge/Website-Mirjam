@@ -8,6 +8,7 @@
      ?mock=1&laden=1        auto staat te laden
      ?mock=1&leeg=1         auto levert een paar velden niet (null)
      ?mock=1&traag=1        opdrachten duren ~25 s in plaats van ~6 s
+     ?mock=1&fout=nooit     de auto antwoordt nooit (toont de 120 s-limiet)
      ?mock=1&fout=vehicle_asleep   de eerstvolgende opdracht mislukt zo
 */
 (() => {
@@ -40,7 +41,7 @@
     gemeten: Date.now() - getNum('leeftijd', 42) * 60000,
     leeg: p.get('leeg') === '1',
     klimaatAan: false,
-    klimaatTemp: 21.0,
+    klimaatTemp: 21,
     klimaatGemeten: Date.now() - getNum('leeftijd', 42) * 60000
   };
 
@@ -84,7 +85,7 @@
     rate_limited: 'Te veel opdrachten achter elkaar. Probeer het straks opnieuw.',
     not_plugged_in: 'De auto hangt niet aan de laadkabel.',
     upstream_error: 'Nissan geeft een storing terug.',
-    invalid_request: 'De opdracht klopt niet.'
+    invalid_request: 'De opdracht klopt niet (temperatuur moet een hele graad van 16 t/m 26 zijn).'
   };
   const HERHAALBAAR = {
     unauthorized: false, nissan_auth_failed: false, vehicle_asleep: true,
@@ -148,8 +149,9 @@
     if (weg === 'api/climate/start' && methode === 'POST') {
       let body = {};
       try { body = JSON.parse((opties && opties.body) || '{}'); } catch { body = {}; }
+      // De auto accepteert alleen hele graden van 16 tot en met 26.
       const t = body.target_temp_c;
-      if (typeof t !== 'number' || t < 16 || t > 26 || Math.round(t * 2) !== t * 2) {
+      if (typeof t !== 'number' || !Number.isInteger(t) || t < 16 || t > 26) {
         return foutAntwoord('invalid_request');
       }
       return startJob('start', t);
@@ -222,7 +224,7 @@
     ['unauthorized', 'token geweigerd (401)'],
     ['netwerk', 'server onbereikbaar'],
     ['timeout', 'job eindigt in timeout'],
-    ['nooit', 'auto antwoordt nooit (90 s-limiet)']
+    ['nooit', 'auto antwoordt nooit (120 s-limiet)']
   ];
 
   let keuzeVeld = null;

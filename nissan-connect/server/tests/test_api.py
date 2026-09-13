@@ -336,16 +336,16 @@ async def test_climate_status(client: httpx.AsyncClient) -> None:
 
 
 async def test_climate_start_en_stop(client: httpx.AsyncClient) -> None:
-    created = (await client.post("/api/climate/start", json={"target_temp_c": 21.5})).json()
+    created = (await client.post("/api/climate/start", json={"target_temp_c": 21.0})).json()
     assert set(created) == {"job_id", "status"}
     job = await poll_job(client, created["job_id"])
     assert job["status"] == "success", job
     assert job["result"]["running"] is True
-    assert job["result"]["target_temp_c"] == 21.5
+    assert job["result"]["target_temp_c"] == 21.0
 
     status = (await client.get("/api/climate")).json()
     assert status["running"] is True
-    assert status["target_temp_c"] == 21.5
+    assert status["target_temp_c"] == 21.0
 
     gestopt = (await client.post("/api/climate/stop")).json()
     job = await poll_job(client, gestopt["job_id"])
@@ -383,15 +383,15 @@ async def test_temperatuur_buiten_bereik(client: httpx.AsyncClient, temp: float)
     assert fout["retryable"] is False
 
 
-@pytest.mark.parametrize("temp", [21.3, 19.25, 16.1])
-async def test_temperatuur_met_verkeerde_stapgrootte(
-    client: httpx.AsyncClient, temp: float
-) -> None:
+@pytest.mark.parametrize("temp", [21.5, 21.3, 19.25, 16.1])
+async def test_alleen_hele_graden(client: httpx.AsyncClient, temp: float) -> None:
+    """De auto kent geen halve graden -- zie de afwijking op CONTRACT.md in base.py."""
     response = await client.post("/api/climate/start", json={"target_temp_c": temp})
-    assert_contract_error(response, "invalid_request")
+    fout = assert_contract_error(response, "invalid_request")
+    assert "hele graad" in fout["message"]
 
 
-@pytest.mark.parametrize("temp", [16.0, 16.5, 21.0, 21.5, 26.0])
+@pytest.mark.parametrize("temp", [16.0, 17.0, 21.0, 22.0, 26.0])
 def test_geldige_temperaturen(temp: float) -> None:
     assert validate_target_temp(temp) == temp
 

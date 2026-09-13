@@ -6,10 +6,10 @@
   /* ── Instellingen ────────────────────────────────────────── */
   const TOKEN_SLEUTEL = 'ariya_app_token';
   const POLL_MS = 3000;          // contract: elke 3 seconden pollen
-  const POLL_MAX_MS = 90000;     // contract: maximaal 90 seconden
-  const TEMP_MIN = 16.0;
-  const TEMP_MAX = 26.0;
-  const TEMP_STAP = 0.5;
+  const POLL_MAX_MS = 120000;    // de Nissan-API doet er soms twee minuten over
+  const TEMP_MIN = 16;
+  const TEMP_MAX = 26;
+  const TEMP_STAP = 1;           // de auto kent alleen hele graden
   const VERS_MIN = 10;           // < 10 min = vers
   const OUD_MIN = 60;            // >= 60 min = ronduit verouderd
 
@@ -78,7 +78,7 @@
     upstream_error:
       'Nissan geeft een storing terug. Dat ligt niet aan jou — probeer het straks opnieuw.',
     invalid_request:
-      'De opdracht werd geweigerd omdat er iets niet klopt. Controleer de temperatuur: 16,0 tot 26,0 °C in halve graden.',
+      'De opdracht werd geweigerd omdat er iets niet klopt. Controleer de temperatuur: hele graden van 16 tot 26 °C.',
     netwerk:
       'Geen verbinding met de server. Staat de server aan en heb je internet?',
     ongeldig_antwoord:
@@ -86,7 +86,7 @@
     job_timeout:
       'De auto gaf niet op tijd antwoord. Meestal betekent dat: hij slaapt. Probeer het zo nog eens.',
     client_timeout:
-      'Na 90 seconden nog geen antwoord. De opdracht kan alsnog aankomen — wacht een minuut en ververs dan.'
+      'Na twee minuten wachten nog geen antwoord. De opdracht kan alsnog aankomen — wacht even en ververs daarna.'
   };
 
   function foutRegel(fout) {
@@ -298,30 +298,53 @@
 
   /* ── Klimaat tonen ───────────────────────────────────────── */
   let tempAangeraakt = false;
-  let gewensteTemp = 21.0;
+  let gewensteTemp = 21;
+  let klimaatDraait = false;
+  let serverTemp = null;
 
   function zetTemp(waarde, vanServer) {
-    let t = Math.round(waarde / TEMP_STAP) * TEMP_STAP;
-    t = Math.min(TEMP_MAX, Math.max(TEMP_MIN, t));
-    gewensteTemp = Math.round(t * 10) / 10;
+    const t = Math.min(TEMP_MAX, Math.max(TEMP_MIN, Math.round(waarde)));
+    gewensteTemp = t;
     el('temp-schuif').value = String(gewensteTemp);
-    el('temp-waarde').firstChild.nodeValue = getal(gewensteTemp, 1);
-    el('temp-schuif').setAttribute('aria-valuetext', getal(gewensteTemp, 1) + ' graden Celsius');
+    el('temp-waarde').firstChild.nodeValue = String(gewensteTemp);
+    el('temp-schuif').setAttribute('aria-valuetext', gewensteTemp + ' graden Celsius');
     el('temp-min').disabled = gewensteTemp <= TEMP_MIN;
     el('temp-plus').disabled = gewensteTemp >= TEMP_MAX;
     if (!vanServer) tempAangeraakt = true;
+    werkStartKnopBij();
+  }
+
+  /* De temperatuur is geen losse opdracht: hij gaat mee met "starten".
+     Dat staat op de knop zelf, zodat er geen twijfel over kan bestaan. */
+  function werkStartKnopBij() {
+    const knop = el('klimaat-start');
+    const tekst = 'Voorverwarmen starten op ' + gewensteTemp + ' °C';
+    if (knop.disabled) knop.dataset.label = tekst;
+    else knop.textContent = tekst;
+
+    const noot = el('temp-koppel-noot');
+    if (klimaatDraait && tempAangeraakt && gewensteTemp !== serverTemp) {
+      noot.textContent = 'De auto warmt nu voor op ' + (serverTemp === null ? 'een andere stand' : serverTemp + ' °C') +
+        '. Deze ' + gewensteTemp + ' °C geldt pas als je opnieuw start.';
+      noot.classList.add('instelgroep-noot--let-op');
+    } else {
+      noot.textContent = 'De temperatuur gaat mee op het moment dat je hieronder start. Los opslaan kan de auto niet.';
+      noot.classList.remove('instelgroep-noot--let-op');
+    }
   }
 
   function toonKlimaat(klimaat) {
     const vak = el('klimaat-status');
-    const temp = typeof klimaat.target_temp_c === 'number' ? klimaat.target_temp_c : null;
+    const temp = typeof klimaat.target_temp_c === 'number' ? Math.round(klimaat.target_temp_c) : null;
+    klimaatDraait = klimaat.running === true;
+    serverTemp = temp;
 
     if (klimaat.running === true) {
       vak.className = 'klimaat-status klimaat-status--aan';
-      vak.textContent = 'Voorverwarmen staat AAN' + (temp !== null ? ' op ' + getal(temp, 1) + ' °C' : '');
+      vak.textContent = 'Voorverwarmen staat AAN' + (temp !== null ? ' op ' + temp + ' °C' : '');
     } else if (klimaat.running === false) {
       vak.className = 'klimaat-status';
-      vak.textContent = 'Voorverwarmen staat uit' + (temp !== null ? ' · ingesteld op ' + getal(temp, 1) + ' °C' : '');
+      vak.textContent = 'Voorverwarmen staat uit' + (temp !== null ? ' · laatst gebruikt: ' + temp + ' °C' : '');
     } else {
       vak.className = 'klimaat-status';
       vak.textContent = 'Onbekend of het voorverwarmen aan staat';
@@ -331,9 +354,10 @@
     // meteen moet kunnen vinden; anders is "starten" de hoofdknop.
     const aan = klimaat.running === true;
     el('klimaat-start').className = 'knop knop--groot ' + (aan ? 'knop--rand' : 'knop--primair');
-    el('klimaat-stop').className = 'knop knop--groot ' + (aan ? 'knop--primair' : 'knop--rand');
+    el('klimaat-stop').className = 'knop knop--groot knop--los ' + (aan ? 'knop--primair' : 'knop--rand');
 
     if (temp !== null && !tempAangeraakt) zetTemp(temp, true);
+    else werkStartKnopBij();
   }
 
   /* ── Voortgang van een opdracht ──────────────────────────── */
@@ -347,12 +371,12 @@
 
     const tik = () => {
       const s = Math.floor((Date.now() - start) / 1000);
-      const deel = Math.min(100, (s / (POLL_MAX_MS / 1000)) * 100);
-      vul.style.width = deel + '%';
-      balk.setAttribute('aria-valuenow', String(Math.min(90, s)));
+      const maxS = POLL_MAX_MS / 1000;
+      vul.style.width = Math.min(100, (s / maxS) * 100) + '%';
+      balk.setAttribute('aria-valuenow', String(Math.min(maxS, s)));
       let fase = fasen[0];
       for (const f of fasen) if (s >= f.vanaf) fase = f;
-      tekst.textContent = fase.tekst + ' (' + s + ' s van maximaal 90 s)';
+      tekst.textContent = fase.tekst + ' (' + s + ' s; maximaal ' + maxS + ' s)';
     };
 
     return {
@@ -381,9 +405,9 @@
     'ververs-voortgang', 'ververs-balk', 'ververs-vul', 'ververs-voortgang-tekst',
     [
       { vanaf: 0, tekst: 'Opdracht verstuurd, de auto wordt wakker gemaakt…' },
-      { vanaf: 12, tekst: 'Wachten op antwoord van de auto…' },
-      { vanaf: 35, tekst: 'Dit kan tot een minuut duren — nog even geduld…' },
-      { vanaf: 65, tekst: 'Bijna de maximale wachttijd bereikt…' }
+      { vanaf: 15, tekst: 'Wachten op antwoord — de auto doet hier vaak een minuut over…' },
+      { vanaf: 45, tekst: 'Nog steeds bezig. Dit mag tot twee minuten duren; niet nog eens drukken…' },
+      { vanaf: 95, tekst: 'Bijna de maximale wachttijd van twee minuten bereikt…' }
     ]
   );
 
@@ -391,13 +415,13 @@
     'klimaat-voortgang', 'klimaat-balk', 'klimaat-vul', 'klimaat-voortgang-tekst',
     [
       { vanaf: 0, tekst: 'Opdracht verstuurd naar de auto…' },
-      { vanaf: 12, tekst: 'Wachten tot de auto bevestigt…' },
-      { vanaf: 35, tekst: 'De auto doet er langer over dan gewoonlijk…' },
-      { vanaf: 65, tekst: 'Bijna de maximale wachttijd bereikt…' }
+      { vanaf: 15, tekst: 'Wachten tot de auto bevestigt — dit duurt vaak een minuut…' },
+      { vanaf: 45, tekst: 'Nog steeds bezig. Dit mag tot twee minuten duren; niet nog eens drukken…' },
+      { vanaf: 95, tekst: 'Bijna de maximale wachttijd van twee minuten bereikt…' }
     ]
   );
 
-  /* ── Job pollen (elke 3 s, maximaal 90 s) ────────────────── */
+  /* ── Job pollen (elke 3 s, maximaal 120 s) ───────────────── */
   async function volgJob(jobStart) {
     const job = await jobStart();
     if (!job || typeof job !== 'object') throw new ApiFout('ongeldig_antwoord', null, false, 0);
@@ -420,7 +444,7 @@
   function zetBezig(knoppen, bezig, bezigLabel) {
     knoppen.forEach((k) => {
       if (bezig) {
-        if (!k.dataset.label) k.dataset.label = k.textContent.trim();
+        k.dataset.label = k.textContent.trim();
         k.disabled = true;
         k.setAttribute('aria-busy', 'true');
         if (bezigLabel && k === knoppen[0]) k.textContent = bezigLabel;
@@ -488,7 +512,9 @@
     const start = el('klimaat-start');
     const stop = el('klimaat-stop');
     const knoppen = actie === 'start' ? [start, stop] : [stop, start];
-    zetBezig(knoppen, true, actie === 'start' ? 'Starten…' : 'Stoppen…');
+    zetBezig(knoppen, true, actie === 'start'
+      ? 'Starten op ' + gewensteTemp + ' °C…'
+      : 'Stoppen…');
     klimaatVoortgang.begin();
     try {
       await volgJob(actie === 'start' ? () => startKlimaat(gewensteTemp) : stopKlimaat);
@@ -497,7 +523,7 @@
       await laadKlimaatEnToon(true);
       meld(
         actie === 'start'
-          ? 'Voorverwarmen gestart op ' + getal(gewensteTemp, 1) + ' °C.'
+          ? 'Voorverwarmen gestart op ' + gewensteTemp + ' °C.'
           : 'Voorverwarmen gestopt.',
         'goed'
       );
@@ -601,7 +627,7 @@
 
   /* ── Start ───────────────────────────────────────────────── */
   koppel();
-  zetTemp(21.0, true);
+  zetTemp(21, true);
   werkLeeftijdBij();
 
   if (mockActief) {

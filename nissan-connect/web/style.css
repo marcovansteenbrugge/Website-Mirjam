@@ -95,6 +95,20 @@ body {
   margin-top: 0.5rem; text-align: center;
 }
 .knop-paar { display: grid; gap: 0.6rem; margin-top: 0.25rem; }
+.knop--los { margin-top: 0.6rem; }
+
+/* De temperatuur hoort bij de startknop: één omlijnde groep, geen losse opslaan-knop. */
+.instelgroep {
+  border: 1px solid var(--rand);
+  border-radius: 14px;
+  padding: 0.9rem 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+.instelgroep-noot {
+  font-size: 0.82rem; line-height: 1.35; color: var(--tekst-zacht);
+  text-align: center; margin: 0.4rem 0 0.8rem;
+}
+.instelgroep-noot--let-op { color: var(--waarschuwing); font-weight: 600; }
 
 /* ── Tokenscherm ───────────────────────────────────────────── */
 .token-scherm {

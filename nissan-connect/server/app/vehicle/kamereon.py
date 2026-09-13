@@ -1,36 +1,42 @@
 """Echte client tegen de NissanConnect-backend (Kamereon).
 
-HERKOMST VAN DE ENDPOINTS
-=========================
-Alles hieronder is overgenomen uit echte, werkende broncode -- niet geraden:
+HERKOMST
+========
+De constanten en de volgorde van de HTTP-stappen zijn overgenomen uit het
+`kamereon/`-package van **dan-r/HomeAssistant-NissanConnect** (MIT-licentie),
+bestanden `kamereon.py` en `kamereon_const.py`. Die code gebruikt `requests` +
+`requests_oauthlib`; hier is de flow herschreven naar `httpx.AsyncClient`, zodat
+er niets blokkeert en er geen extra afhankelijkheden meegesleept worden.
+Dat werk bouwt zelf voort op `mitchellrj/kamereon-python` en `Tobiaswk`.
 
-* `dan-r/HomeAssistant-NissanConnect`, bestand
-  `custom_components/nissan_connect/kamereon/kamereon.py` en `kamereon_const.py`
-  (de actuele, onderhouden HACS-integratie voor NissanConnect EU; ondersteunt
-  de Ariya expliciet via `fetch_battery_status_ariya`).
-* `mitchellrj/kamereon-python` (ouder, ForgeRock-gebaseerd; gebruikt voor
-  historische context).
-* `hacf-fr/renault-api` (Gigya + Kamereon) -- ter vergelijking.
+Aanvullend gecontroleerd tegen `../../nissan-research/API-RESEARCH.md`
+(secties 2, 3, 4, 6 en 8), dat dezelfde constanten uit een tweede, onafhankelijke
+implementatie (evcc, Go) bevestigt.
 
-BELANGRIJKE CORRECTIE OP DE OPDRACHT
-------------------------------------
-De opdracht vroeg om "Gigya login -> JWT -> Kamereon". Dat pad is **Renault**,
-niet Nissan: `renault-api` logt in op `accounts.eu1.gigya.com` met een
-Renault-API-key. Voor Nissan EU bestaat dat pad niet (meer). De geverifieerde
-Nissan-flow is OAuth2 + PKCE tegen WSO2 (`login.mynissan-account.com`), gevolgd
-door een omwisseling van het OneID-`id_token` naar een Kamereon-token. Dat is
-hieronder geïmplementeerd. Er is bewust géén Gigya-code verzonnen.
+CORRECTIE OP DE OORSPRONKELIJKE OPDRACHT
+----------------------------------------
+De opdracht vroeg om "Gigya login -> JWT -> Kamereon". Dat is **Renault**, niet
+Nissan: `renault-api` logt in op `accounts.eu1.gigya.com` met een Renault-API-key.
+Nissan EU gebruikte ForgeRock/OpenAM en sinds eind augustus 2026 MyNISSAN
+"OneID": een WSO2 Identity Server op `login.mynissan-account.com` met OAuth2
+authorization-code + PKCE, zonder client secret en zonder API-key. Het
+Kamereon-datavlak erachter is ongewijzigd. Er is bewust géén Gigya-code verzonnen.
 
-WAT HIER *NIET* GEVERIFIEERD KON WORDEN
----------------------------------------
-Zie de `NotImplementedError`-plekken verderop; elke daarvan benoemt exact wat
-onbekend is. Samengevat:
+STATUS VAN DE VERIFICATIE -- LEES DIT
+-------------------------------------
+Niets hieronder is tegen een echte Nissan-server getest: dat vraagt om echte
+inloggegevens en een echte auto. Wat er wél is: twee onafhankelijk geschreven
+implementaties die het over elke constante eens zijn. Behandel dit dus als
+goed onderbouwd maar onbevestigd.
 
-1. Halve graden als streeftemperatuur (contract staat 0.5-stappen toe). Alle
-   geverifieerde bronnen sturen een geheel getal 16..26 in `targetTemperature`.
-2. Andere regio's dan EU: alleen de EU-instellingen staan in de bron.
-3. `state_of_health_percent`: komt in geen enkel geverifieerd antwoordveld voor;
-   wordt dus altijd `None` (het contract staat `null` toe).
+Wat bewust NIET is ingevuld (zie de `NotImplementedError`-plekken):
+
+1. Halve graden als streeftemperatuur. De auto kent ze niet; zie
+   :data:`app.vehicle.base.TARGET_TEMP_STEP_C`.
+2. Andere regio's dan Europa: die instellingen staan in geen enkele bron.
+3. `state_of_health_percent`: geen enkele client leest een SOH-veld uit. Blijft
+   `None` (het contract staat `null` toe). De echte route naar accugezondheid is
+   een OBD-II-dongle, niet deze API.
 """
 
 from __future__ import annotations
@@ -91,12 +97,20 @@ EU_COUNTRIES: Final[frozenset[str]] = frozenset(
 
 JSON_API_CONTENT_TYPE: Final[str] = "application/vnd.api+json"
 
-#: Feature-ID's uit `Feature` in kamereon_const.py.
-FEATURE_CLIMATE_ON_OFF: Final[str] = "366"
+#: Feature-ID's uit `Feature` in kamereon_const.py. Deze lijst is tegelijk de
+#: *abonnementsstatus*: loopt NissanConnect Services af, dan kun je nog gewoon
+#: inloggen en de auto zien, maar staan deze niet meer op ACTIVATED.
 FEATURE_BATTERY_STATUS: Final[str] = "319"
+FEATURE_CLIMATE_ON_OFF: Final[str] = "366"
+FEATURE_INTERIOR_TEMP_SETTINGS: Final[str] = "307"
+FEATURE_TEMPERATURE: Final[str] = "2042"
 
 _MAX_REDIRECTS = 10
-_HTTP_TIMEOUT = httpx.Timeout(30.0, connect=15.0)
+
+#: De Kamereon-API is werkelijk traag; evcc hanteert 120 s met de opmerking
+#: "api is unbelievably slow when retrieving status". Een krappe timeout ziet
+#: eruit als een kapotte auto terwijl er niets aan de hand is.
+_HTTP_TIMEOUT = httpx.Timeout(120.0, connect=15.0)
 
 
 def settings_for_region(region: str) -> dict[str, str]:
@@ -198,6 +212,10 @@ class KamereonVehicleClient(VehicleClient):
         self._user_id: str | None = None
         self._vehicle_data: dict[str, Any] | None = None
         self._auth_lock = asyncio.Lock()
+        #: Zijn de inloggegevens afgewezen? Dan niet blijven proberen: WSO2 kent
+        #: account-lockout en CAPTCHA-na-N-pogingen, en dit is een echt
+        #: Nissan-account. Eén duidelijke fout is beter dan een geblokkeerd account.
+        self._auth_blocked: ApiError | None = None
 
     # ------------------------------------------------------------------ #
     # Foutvertaling
@@ -289,10 +307,24 @@ class KamereonVehicleClient(VehicleClient):
                 parser = _LoginFormParser()
                 parser.feed(response.text)
                 if parser.login_form is not None:
-                    # We zijn terug op het inlogformulier: wachtwoord fout.
-                    raise ApiError("nissan_auth_failed")
+                    # WSO2 geeft bij verkeerde inloggegevens geen OAuth-fout terug,
+                    # maar rendert het inlogformulier opnieuw. Dát is het signaal.
+                    raise ApiError(
+                        "nissan_auth_failed",
+                        "Nissan accepteert je gebruikersnaam of wachtwoord niet. "
+                        "Controleer of je met dezelfde gegevens in de MyNISSAN-app "
+                        "kunt inloggen.",
+                    )
             break
-        raise self._fail_upstream("autorisatiecode ophalen", "geen code ontvangen")
+
+        # Geen callback én geen inlogformulier: dit is géén wachtwoordprobleem.
+        # Meestal wacht er een akkoordverklaring of verificatie in de app zelf.
+        raise ApiError(
+            "nissan_auth_failed",
+            "Het inloggen bij Nissan liep vast. Open de MyNISSAN-app of -website, "
+            "bevestig eventuele openstaande voorwaarden of verificaties, en probeer "
+            "het daarna opnieuw.",
+        )
 
     async def _authorization_code(self) -> tuple[str, str]:
         """Doorloop het inlogformulier en lever (code, verifier)."""
@@ -314,6 +346,7 @@ class KamereonVehicleClient(VehicleClient):
                     "brand": self._settings["auth_brand"],
                     "client": self._settings["auth_client"],
                 },
+                headers={"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
             )
         except httpx.HTTPError as exc:
             raise self._fail_upstream("verbinden met Nissan-login", str(exc)) from None
@@ -439,6 +472,9 @@ class KamereonVehicleClient(VehicleClient):
     async def _ensure_token(self, *, force: bool = False) -> str:
         """Zorg voor een geldig Kamereon-token; log opnieuw in als het moet."""
         async with self._auth_lock:
+            if self._auth_blocked is not None:
+                # Inloggegevens zijn eerder afgewezen. Niet opnieuw proberen.
+                raise self._auth_blocked
             if not force and self._access_token and time.monotonic() < self._expires_at:
                 return self._access_token
             if self._refresh_token and not force:
@@ -449,7 +485,12 @@ class KamereonVehicleClient(VehicleClient):
                     _LOGGER.debug("Token vernieuwen mislukt; opnieuw inloggen.")
                 except httpx.HTTPError:
                     _LOGGER.debug("Netwerkfout bij vernieuwen; opnieuw inloggen.")
-            await self._login()
+            try:
+                await self._login()
+            except ApiError as exc:
+                if exc.code == "nissan_auth_failed":
+                    self._auth_blocked = exc
+                raise
             return self._access_token or ""
 
     # ------------------------------------------------------------------ #
@@ -552,7 +593,9 @@ class KamereonVehicleClient(VehicleClient):
         if not cars:
             raise ApiError(
                 "upstream_error",
-                "Er staat geen auto op dit Nissan-account.",
+                "Er staat geen auto op dit Nissan-account. Koppel de auto eerst in "
+                "de MyNISSAN-app; via deze weg kan dat niet.",
+                retryable=False,
             )
         if self._pinned_vin:
             for car in cars:
@@ -568,11 +611,39 @@ class KamereonVehicleClient(VehicleClient):
 
     @staticmethod
     def _active_features(car: dict[str, Any]) -> set[str]:
+        """De diensten die op dit moment écht actief zijn voor deze auto."""
         return {
             str(service.get("id"))
             for service in car.get("services", [])
             if service.get("activationState") == "ACTIVATED"
         }
+
+    def _require_feature(self, car: dict[str, Any], feature_id: str, wat: str) -> None:
+        """Controleer of een dienst actief is, met een begrijpelijke uitleg als dat niet zo is.
+
+        Dit is de stille killer van deze API: als het NissanConnect-abonnement
+        afloopt, kun je nog gewoon inloggen en staat de auto er nog gewoon in --
+        alleen `services[]` zegt niet meer ACTIVATED, en alles geeft lege of
+        foutieve antwoorden terug. Die situatie mag niet verward worden met een
+        netwerkstoring of een slapende auto.
+        """
+        active = self._active_features(car)
+        if feature_id in active:
+            return
+        if not active:
+            raise ApiError(
+                "upstream_error",
+                "Er staan geen actieve NissanConnect-diensten op deze auto. "
+                "Waarschijnlijk is het NissanConnect-abonnement verlopen — dat is "
+                "te zien (en te verlengen) in de MyNISSAN-app.",
+                retryable=False,
+            )
+        raise ApiError(
+            "upstream_error",
+            f"{wat} is niet beschikbaar voor deze auto. Controleer in de MyNISSAN-app "
+            "of deze dienst nog in je abonnement zit.",
+            retryable=False,
+        )
 
     @staticmethod
     def _parse_timestamp(value: Any) -> datetime | None:
@@ -610,6 +681,7 @@ class KamereonVehicleClient(VehicleClient):
         `GET {user_base_url}v3/cars/{vin}/battery-status?canGen={canGeneration}`.
         """
         car = await self._get_vehicle_data()
+        self._require_feature(car, FEATURE_BATTERY_STATUS, "Het uitlezen van de accu")
         vin = str(car.get("vin", "")).upper()
         can_gen = car.get("canGeneration")
 
@@ -666,6 +738,7 @@ class KamereonVehicleClient(VehicleClient):
         De aanroeper pollt daarna :meth:`get_battery`.
         """
         car = await self._get_vehicle_data()
+        self._require_feature(car, FEATURE_BATTERY_STATUS, "Het uitlezen van de accu")
         vin = str(car.get("vin", "")).upper()
         await self._request(
             "POST",
@@ -676,6 +749,7 @@ class KamereonVehicleClient(VehicleClient):
     async def get_climate(self) -> ClimateState:
         """GET {car_adapter_base_url}v1/cars/{vin}/hvac-status (geverifieerd)."""
         car = await self._get_vehicle_data()
+        self._require_feature(car, FEATURE_CLIMATE_ON_OFF, "Voorverwarmen")
         vin = str(car.get("vin", "")).upper()
         body = await self._request(
             "GET", f"{self._settings['car_adapter_base_url']}v1/cars/{vin}/hvac-status"
@@ -696,20 +770,26 @@ class KamereonVehicleClient(VehicleClient):
         """POST .../actions/hvac-start met `action: start` (geverifieerd)."""
         if float(target_temp_c) != float(int(target_temp_c)):
             raise NotImplementedError(
-                "ONGEVERIFIEERD: halve graden. Het contract staat stappen van 0.5 toe, "
-                "maar elke geraadpleegde bron (kamereon.py set_hvac_status, de HA-"
-                "climate-entiteit met target_temperature_step=1) stuurt uitsluitend een "
-                "geheel getal 16..26 in 'targetTemperature'. Of Nissan 21.5 accepteert, "
-                "afrondt of weigert is onbekend en wordt hier niet geraden. "
-                "Kies een hele graad, of verifieer dit eerst op de echte auto."
+                "ONGEVERIFIEERD: halve graden. De auto kent alleen hele graden 16..26 in "
+                "'targetTemperature' (kamereon.py set_hvac_status raakt hierop een "
+                "ValueError; de HA-climate-entiteit gebruikt target_temperature_step=1; "
+                "API-RESEARCH.md sectie 4 bevestigt dit uit een tweede implementatie). "
+                "Of Nissan 21.5 accepteert, afrondt of weigert is onbekend en wordt hier "
+                "niet geraden. De API-laag hoort halve graden al eerder te weigeren; deze "
+                "controle is het vangnet."
             )
 
         car = await self._get_vehicle_data()
+        self._require_feature(car, FEATURE_CLIMATE_ON_OFF, "Voorverwarmen")
         vin = str(car.get("vin", "")).upper()
-        if FEATURE_CLIMATE_ON_OFF not in self._active_features(car):
-            raise ApiError(
-                "upstream_error",
-                "Voorverwarmen is niet geactiveerd voor deze auto in je NissanConnect-abonnement.",
+
+        # Sommige auto's mogen de klimaatregeling wel aanzetten, maar geen eigen
+        # streeftemperatuur kiezen. Dat blokkeert het starten niet -- de auto
+        # gebruikt dan zijn eigen instelling.
+        active = self._active_features(car)
+        if not (active & {FEATURE_TEMPERATURE, FEATURE_INTERIOR_TEMP_SETTINGS}):
+            _LOGGER.info(
+                "Deze auto ondersteunt geen eigen streeftemperatuur; de auto kiest zelf."
             )
 
         await self._request(
@@ -732,7 +812,9 @@ class KamereonVehicleClient(VehicleClient):
         Ja, ook stoppen gaat via het `hvac-start`-pad -- zo staat het in de bron.
         """
         car = await self._get_vehicle_data()
+        self._require_feature(car, FEATURE_CLIMATE_ON_OFF, "Voorverwarmen")
         vin = str(car.get("vin", "")).upper()
+        # Bewust géén targetTemperature meesturen bij "stop".
         await self._request(
             "POST",
             f"{self._settings['car_adapter_base_url']}v1/cars/{vin}/actions/hvac-start",
