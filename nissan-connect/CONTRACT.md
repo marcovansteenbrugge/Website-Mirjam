@@ -54,11 +54,11 @@ Frontend pollt elke 3s, maximaal 90s.
 
 ### `GET /api/climate`
 ```json
-{ "running": false, "target_temp_c": 21.0, "updated_at": "2026-09-13T08:14:00Z" }
+{ "running": false, "target_temp_c": 21, "updated_at": "2026-09-13T08:14:00Z" }
 ```
 
 ### `POST /api/climate/start`
-Body: `{ "target_temp_c": 21.0 }` — toegestaan bereik 16.0 t/m 26.0, stappen van 0.5.
+Body: `{ "target_temp_c": 21 }` — toegestaan bereik 16 t/m 26, HELE graden (de auto kent geen halve graden).
 Antwoord: job-object, net als refresh.
 
 ### `POST /api/climate/stop`
@@ -79,3 +79,17 @@ Berichten zijn **Nederlands** en gericht aan de eigenaar, niet aan een ontwikkel
 Met `MOCK=1` draait de backend zonder Nissan-account en geeft plausibele nepdata die
 langzaam verandert (accu loopt leeg, opladen loopt op). Zo kan de frontend los ontwikkeld
 en gedemonstreerd worden.
+
+## Correcties na API-onderzoek (13-09-2026)
+
+Zie `nissan-research/API-RESEARCH.md` voor de onderbouwing.
+
+- **Temperatuur is in hele graden**, 16 t/m 26. Nissan accepteert geen halve graden.
+- **Er is geen losse "zet temperatuur"-opdracht.** Temperatuur instellen en voorverwarmen
+  starten zijn bij Nissan één actie (`hvac-start`). `GET /api/climate` geeft daarom de
+  laatst gebruikte temperatuur terug, niet een apart opgeslagen instelling.
+- **Timeouts moeten ruim zijn.** De Nissan-API doet er regelmatig meer dan een minuut over.
+  Backend hanteert 120s HTTP-timeout; frontend pollt tot 120s.
+- **Abonnement kan stilletjes verlopen.** Inloggen blijft dan werken en de auto is nog
+  zichtbaar, alleen `services[]` meldt niet meer `ACTIVATED`. Backend controleert dit
+  expliciet en geeft dan een duidelijke melding in plaats van een vage fout.
