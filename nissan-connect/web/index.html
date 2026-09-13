@@ -86,8 +86,8 @@
           <span class="soc-getal" id="soc-getal">–</span><span class="soc-teken" aria-hidden="true">%</span>
         </p>
         <div class="accu-naast">
-          <p class="bereik"><span class="bereik-getal" id="bereik-getal">–</span> <span class="bereik-eenheid">km</span></p>
-          <p class="bereik-label">actieradius</p>
+          <p class="bereik"><span class="bereik-getal" id="bereik-getal">–</span> <span class="bereik-eenheid" id="bereik-eenheid">km</span></p>
+          <p class="bereik-label" id="bereik-label">actieradius</p>
         </div>
       </div>
       <p class="visueel-verborgen" id="soc-uitleg">Laadstatus wordt hieronder ook als balk getoond.</p>
@@ -106,11 +106,11 @@
       <button id="ververs-knop" class="knop knop--primair knop--groot" type="button">
         Ververs bij de auto
       </button>
-      <p class="knop-noot">Vraagt een verse meting aan de auto. Duurt 10 tot 60 seconden.</p>
+      <p class="knop-noot">Vraagt een verse meting aan de auto. Dat duurt meestal 10 tot 60 seconden, soms twee minuten.</p>
 
       <div id="ververs-voortgang" class="voortgang" hidden>
         <div class="voortgang-spoor" role="progressbar" aria-labelledby="ververs-voortgang-tekst"
-             aria-valuemin="0" aria-valuemax="90" aria-valuenow="0" id="ververs-balk">
+             aria-valuemin="0" aria-valuemax="120" aria-valuenow="0" id="ververs-balk">
           <span class="voortgang-vul" id="ververs-vul"></span>
         </div>
         <p class="voortgang-tekst" id="ververs-voortgang-tekst" aria-live="polite">Bezig…</p>
@@ -123,35 +123,40 @@
 
       <p id="klimaat-status" class="klimaat-status" aria-live="polite">Status onbekend</p>
 
-      <div class="temp-regel">
-        <button id="temp-min" class="knop knop--stap" type="button" aria-label="Halve graad kouder">
-          <span aria-hidden="true">−</span>
-        </button>
-        <p class="temp-waarde" id="temp-waarde" aria-hidden="true">21,0<span class="temp-eenheid">°C</span></p>
-        <button id="temp-plus" class="knop knop--stap" type="button" aria-label="Halve graad warmer">
-          <span aria-hidden="true">+</span>
-        </button>
-      </div>
+      <div class="instelgroep">
+        <div class="temp-regel">
+          <button id="temp-min" class="knop knop--stap" type="button" aria-label="Eén graad kouder">
+            <span aria-hidden="true">−</span>
+          </button>
+          <p class="temp-waarde" id="temp-waarde" aria-hidden="true">21<span class="temp-eenheid">°C</span></p>
+          <button id="temp-plus" class="knop knop--stap" type="button" aria-label="Eén graad warmer">
+            <span aria-hidden="true">+</span>
+          </button>
+        </div>
 
-      <label class="veld-label veld-label--midden" for="temp-schuif">Gewenste temperatuur</label>
-      <input id="temp-schuif" class="schuif" type="range"
-             min="16" max="26" step="0.5" value="21"
-             aria-describedby="temp-bereik-noot">
-      <p class="schuif-schaal" aria-hidden="true"><span>16&nbsp;°C</span><span>21&nbsp;°C</span><span>26&nbsp;°C</span></p>
-      <p class="knop-noot" id="temp-bereik-noot">Van 16,0 tot 26,0 °C, in stappen van een halve graad.</p>
+        <label class="veld-label veld-label--midden" for="temp-schuif">Gewenste temperatuur</label>
+        <input id="temp-schuif" class="schuif" type="range"
+               min="16" max="26" step="1" value="21"
+               aria-describedby="temp-bereik-noot temp-koppel-noot">
+        <p class="schuif-schaal" aria-hidden="true"><span>16&nbsp;°C</span><span>21&nbsp;°C</span><span>26&nbsp;°C</span></p>
+        <p class="knop-noot" id="temp-bereik-noot">Van 16 tot 26 °C, in hele graden.</p>
 
-      <div class="knop-paar">
+        <p class="instelgroep-noot" id="temp-koppel-noot">
+          De temperatuur gaat mee op het moment dat je hieronder start. Los opslaan kan de auto niet.
+        </p>
+
         <button id="klimaat-start" class="knop knop--primair knop--groot" type="button">
-          Voorverwarmen starten
-        </button>
-        <button id="klimaat-stop" class="knop knop--rand knop--groot" type="button">
-          Stoppen
+          Voorverwarmen starten op 21 °C
         </button>
       </div>
+
+      <button id="klimaat-stop" class="knop knop--rand knop--groot knop--los" type="button">
+        Voorverwarmen stoppen
+      </button>
 
       <div id="klimaat-voortgang" class="voortgang" hidden>
         <div class="voortgang-spoor" role="progressbar" aria-labelledby="klimaat-voortgang-tekst"
-             aria-valuemin="0" aria-valuemax="90" aria-valuenow="0" id="klimaat-balk">
+             aria-valuemin="0" aria-valuemax="120" aria-valuenow="0" id="klimaat-balk">
           <span class="voortgang-vul" id="klimaat-vul"></span>
         </div>
         <p class="voortgang-tekst" id="klimaat-voortgang-tekst" aria-live="polite">Bezig…</p>

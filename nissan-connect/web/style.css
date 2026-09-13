@@ -184,7 +184,7 @@ body {
 
 /* ── Leeftijd van de meting ────────────────────────────────── */
 .leeftijd {
-  display: flex; align-items: center; gap: 0.55rem;
+  display: flex; align-items: flex-start; gap: 0.55rem;
   font-weight: 700; font-size: 1rem;
   padding: 0.7rem 0.85rem; border-radius: 12px;
   border: 1px solid var(--rand); background: var(--vlak-hoog);
@@ -192,7 +192,7 @@ body {
 }
 .leeftijd-punt {
   width: 12px; height: 12px; border-radius: 50%;
-  background: var(--tekst-gedempt); flex: none;
+  background: var(--tekst-gedempt); flex: none; margin-top: 0.42em;
 }
 .leeftijd--vers { color: var(--accent); border-color: rgba(52, 216, 155, 0.45); background: var(--accent-donker); }
 .leeftijd--vers .leeftijd-punt { background: var(--accent); }

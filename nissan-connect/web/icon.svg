@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Ariya accu">
+  <rect width="512" height="512" rx="0" fill="#080B0E"/>
+  <g transform="translate(0,8)">
+    <rect x="118" y="176" width="252" height="152" rx="34" fill="none" stroke="#34D89B" stroke-width="20"/>
+    <path d="M386 226h14a26 26 0 0 1 26 26v0a26 26 0 0 1-26 26h-14z" fill="#34D89B"/>
+    <path d="M268 196l-88 120h60l-16 96 88-120h-60z" fill="#34D89B"/>
+  </g>
+</svg>
