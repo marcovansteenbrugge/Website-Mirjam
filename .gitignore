@@ -3,3 +3,16 @@ node_modules/
 .DS_Store
 Thumbs.db
 *.log
+
+# Nissan-connect app — geheimen en lokale rommel
+.env
+*.env
+!*.env.example
+nissan-connect/server/.env
+nissan-connect/**/__pycache__/
+nissan-connect/**/*.pyc
+nissan-connect/server/.venv/
+nissan-connect/server/venv/
+nissan-connect/**/.pytest_cache/
+nissan-connect/**/tokens.json
+nissan-connect/**/.cache/
