@@ -276,19 +276,40 @@ class KamereonVehicleClient(VehicleClient):
             and (parsed.port or 443) == (expected.port or 443)
         )
 
-    async def _follow_login_redirects(self, response: httpx.Response) -> httpx.Response:
+    async def _follow_login_redirects(
+        self, response: httpx.Response
+    ) -> tuple[httpx.Response | None, str | None]:
+        """Volg de redirects op weg naar het inlogformulier.
+
+        Er zijn twee geldige uitkomsten. Normaal eindigt dit op de inlogpagina,
+        die als response terugkomt. Maar staat er nog een geldige WSO2-sessie op
+        deze client -- wat gebeurt zodra het Kamereon-token verloopt en we
+        opnieuw inloggen -- dan slaat Nissan het formulier over en stuurt
+        meteen door naar de callback, mét code. Er valt dan niets in te vullen;
+        die callback-URL komt terug als tweede waarde.
+
+        Dit als fout behandelen brak elke her-authenticatie, en daarmee de hele
+        app zodra het token na ongeveer een uur verliep.
+        """
+        expected_callback = urlparse(self._settings["redirect_uri"])
         for _ in range(_MAX_REDIRECTS):
             if response.is_redirect:
                 location = response.headers.get("location")
                 if not location:
                     break
                 target = urljoin(str(response.url), location)
+                parsed = urlparse(target)
+                if (parsed.scheme, parsed.netloc) == (
+                    expected_callback.scheme,
+                    expected_callback.netloc,
+                ):
+                    return None, target
                 if not self._is_auth_url(target):
                     raise self._fail_upstream("inlogredirect", f"onverwachte host {target}")
                 response = await self._client.get(target)
                 continue
             if response.status_code < 400 and self._is_auth_url(str(response.url)):
-                return response
+                return response, None
             break
         raise self._fail_upstream("inlogpagina laden", f"status {response.status_code}")
 
@@ -355,42 +376,45 @@ class KamereonVehicleClient(VehicleClient):
         except httpx.HTTPError as exc:
             raise self._fail_upstream("verbinden met Nissan-login", str(exc)) from None
 
-        response = await self._follow_login_redirects(response)
+        response, callback_url = await self._follow_login_redirects(response)
 
-        parser = _LoginFormParser()
-        parser.feed(response.text)
-        form = parser.login_form
-        if form is None or not form["action"]:
-            raise self._fail_upstream("inlogformulier zoeken", "formulier niet gevonden")
+        if callback_url is None:
+            assert response is not None  # de andere tak levert altijd een pagina
 
-        login_data: dict[str, str] = dict(form["inputs"])
-        region_code = login_data.get("regionCode", "")
-        login_data.update(
-            {
-                "userName": self._username,
-                "username": f"{region_code}/{self._username}" if region_code else self._username,
-                "password": self._password,
-            }
-        )
+            parser = _LoginFormParser()
+            parser.feed(response.text)
+            form = parser.login_form
+            if form is None or not form["action"]:
+                raise self._fail_upstream("inlogformulier zoeken", "formulier niet gevonden")
 
-        form_url = urljoin(str(response.url), form["action"])
-        if not self._is_auth_url(form_url):
-            raise self._fail_upstream("inlogformulier versturen", f"onverwachte host {form_url}")
-        origin = urlparse(form_url)
-
-        try:
-            post_response = await self._client.post(
-                form_url,
-                data=login_data,
-                headers={
-                    "Origin": f"{origin.scheme}://{origin.netloc}",
-                    "Referer": str(response.url),
-                },
+            login_data: dict[str, str] = dict(form["inputs"])
+            region_code = login_data.get("regionCode", "")
+            login_data.update(
+                {
+                    "userName": self._username,
+                    "username": f"{region_code}/{self._username}" if region_code else self._username,
+                    "password": self._password,
+                }
             )
-        except httpx.HTTPError as exc:
-            raise self._fail_upstream("inloggen bij Nissan", str(exc)) from None
 
-        callback_url = await self._follow_authorization_redirects(post_response)
+            form_url = urljoin(str(response.url), form["action"])
+            if not self._is_auth_url(form_url):
+                raise self._fail_upstream("inlogformulier versturen", f"onverwachte host {form_url}")
+            origin = urlparse(form_url)
+
+            try:
+                post_response = await self._client.post(
+                    form_url,
+                    data=login_data,
+                    headers={
+                        "Origin": f"{origin.scheme}://{origin.netloc}",
+                        "Referer": str(response.url),
+                    },
+                )
+            except httpx.HTTPError as exc:
+                raise self._fail_upstream("inloggen bij Nissan", str(exc)) from None
+            callback_url = await self._follow_authorization_redirects(post_response)
+
         callback = urlparse(callback_url)
         query = parse_qs(callback.query)
 

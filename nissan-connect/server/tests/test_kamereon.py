@@ -467,3 +467,44 @@ async def test_token_wordt_hergebruikt_tot_het_bijna_verloopt() -> None:
         assert "abc" not in client._scrub("token abc gebruikt") or len("abc") < 4
     finally:
         await client.aclose()
+
+
+async def test_al_ingelogde_sessie_slaat_het_inlogformulier_over() -> None:
+    """Bij opnieuw inloggen staat er nog een geldige WSO2-sessie op de client.
+
+    Nissan slaat het inlogformulier dan over en stuurt meteen door naar de
+    callback, mét code. Dat als fout behandelen brak elke her-authenticatie, en
+    daarmee de hele app zodra het Kamereon-token na ongeveer een uur verliep --
+    op een echte Ariya zichtbaar als "onverwachte host com://wso2.service.nci".
+    """
+    client = _client()
+    try:
+        response = httpx.Response(
+            302,
+            headers={"location": "com://wso2.service.nci?code=abc&state=xyz"},
+            request=httpx.Request(
+                "GET", "https://login.mynissan-account.com/oauth2/authorize"
+            ),
+        )
+        pagina, callback = await client._follow_login_redirects(response)
+        assert pagina is None, "er valt niets in te vullen; dit is al een callback"
+        assert callback == "com://wso2.service.nci?code=abc&state=xyz"
+    finally:
+        await client.aclose()
+
+
+async def test_een_echt_vreemde_host_blijft_wel_een_fout() -> None:
+    """De versoepeling hierboven mag niet elke omleiding goedkeuren."""
+    client = _client()
+    try:
+        response = httpx.Response(
+            302,
+            headers={"location": "https://ergens-anders.example/phish"},
+            request=httpx.Request(
+                "GET", "https://login.mynissan-account.com/oauth2/authorize"
+            ),
+        )
+        with pytest.raises(ApiError):
+            await client._follow_login_redirects(response)
+    finally:
+        await client.aclose()
