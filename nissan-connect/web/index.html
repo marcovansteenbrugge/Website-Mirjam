@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Ariya — accu &amp; voorverwarmen</title>
-<meta name="description" content="Bekijk de accustand van de Ariya en start het voorverwarmen.">
+<title>Ariya — overzicht</title>
+<meta name="description" content="Bekijk de accustand, banden, kilometerstand en locatie van de Ariya en start het voorverwarmen.">
 <meta name="theme-color" content="#080B0E">
 <meta name="color-scheme" content="dark">
 <meta name="robots" content="noindex, nofollow">
@@ -61,6 +61,7 @@
 
   <div id="menu-paneel" class="menu-paneel" hidden>
     <p class="menu-regel" id="menu-verbinding">Verbonden met de server.</p>
+    <p class="menu-regel" id="menu-mogelijkheden">Onderdelen worden bij het opstarten opgevraagd.</p>
     <button id="token-wissen" class="knop knop--rand" type="button">Token wissen en opnieuw invoeren</button>
   </div>
 
@@ -72,8 +73,14 @@
       <p class="melding-detail" id="melding-detail" hidden></p>
     </div>
 
-    <!-- ── Accu ─────────────────────────────────────────────────────── -->
-    <section class="kaart kaart--accu" aria-labelledby="accu-titel">
+    <!-- Als de auto helemaal niets ondersteunt (of de lijst niet te halen was) -->
+    <div id="niets-melding" class="melding melding--let-op" role="status" hidden>
+      <p class="melding-tekst">Deze auto geeft op dit moment geen enkel onderdeel vrij.</p>
+      <p class="melding-detail">De server meldt dat accu, voorverwarmen en de rest niet beschikbaar zijn.</p>
+    </div>
+
+    <!-- ── 1. Accu ──────────────────────────────────────────────────── -->
+    <section class="kaart kaart--accu" data-vereist="battery" aria-labelledby="accu-titel" hidden>
       <h2 id="accu-titel" class="kaart-titel">Accu</h2>
 
       <p id="leeftijd" class="leeftijd leeftijd--onbekend" aria-live="polite">
@@ -97,10 +104,20 @@
       </div>
       <p class="visueel-verborgen" id="accu-balk-label">Laadstatus onbekend</p>
 
+      <!-- Resterende laadtijd: alleen zichtbaar als de auto écht laadt -->
+      <p class="laadtijd" id="laadtijd" aria-live="polite" hidden>
+        <span class="laadtijd-punt" aria-hidden="true"></span>
+        <span class="laadtijd-label">Laden</span>
+        <span class="laadtijd-waarde" id="laadtijd-waarde" aria-hidden="true">–</span>
+        <span class="visueel-verborgen" id="laadtijd-lang"></span>
+      </p>
+
       <ul class="chips" id="chips">
         <li class="chip chip--neutraal" id="chip-stekker">Stekker onbekend</li>
         <li class="chip chip--neutraal" id="chip-laden">Laadstatus onbekend</li>
+        <li class="chip chip--stil" id="chip-energie" hidden>Beschikbaar –</li>
         <li class="chip chip--stil" id="chip-soh" hidden>Accugezondheid –</li>
+        <li class="chip chip--stil" id="chip-accutemp" hidden>Accu –</li>
       </ul>
 
       <button id="ververs-knop" class="knop knop--primair knop--groot" type="button">
@@ -117,13 +134,31 @@
       </div>
     </section>
 
-    <!-- ── Voorverwarmen ────────────────────────────────────────────── -->
-    <section class="kaart kaart--klimaat" aria-labelledby="klimaat-titel">
+    <!-- ── 2. Voorverwarmen ─────────────────────────────────────────── -->
+    <section class="kaart kaart--klimaat" data-vereist="climate" aria-labelledby="klimaat-titel" hidden>
       <h2 id="klimaat-titel" class="kaart-titel">Voorverwarmen</h2>
 
       <p id="klimaat-status" class="klimaat-status" aria-live="polite">Status onbekend</p>
 
+      <!-- GEMETEN binnentemperatuur. Bewust een andere vorm dan de instelling
+           hieronder: een meterkaartje zonder knoppen, in de koele kleur. -->
+      <div class="meting" id="binnen-meting" aria-labelledby="binnen-kop" hidden>
+        <p class="meting-kop" id="binnen-kop">
+          <span class="merk merk--meting">Gemeten</span>
+          <span>Nu in de auto</span>
+        </p>
+        <p class="meting-waarde" aria-live="polite">
+          <span id="binnen-waarde">–</span><span class="meting-eenheid">&nbsp;°C</span>
+        </p>
+        <p class="meting-noot">Dit is wat de auto binnen méét. Je kunt het niet instellen.</p>
+      </div>
+
       <div class="instelgroep">
+        <p class="instelgroep-kop">
+          <span class="merk merk--instelling">Instelling</span>
+          <span>Streeftemperatuur — wat je straks wilt</span>
+        </p>
+
         <div class="temp-regel">
           <button id="temp-min" class="knop knop--stap" type="button" aria-label="Eén graad kouder">
             <span aria-hidden="true">−</span>
@@ -161,6 +196,122 @@
         </div>
         <p class="voortgang-tekst" id="klimaat-voortgang-tekst" aria-live="polite">Bezig…</p>
       </div>
+    </section>
+
+    <!-- ── 3. Bandenspanning ────────────────────────────────────────── -->
+    <section class="kaart" data-vereist="tyres" aria-labelledby="banden-titel" hidden>
+      <h2 id="banden-titel" class="kaart-titel">Bandenspanning</h2>
+
+      <p class="kaart-status" id="banden-status" role="status" aria-live="polite" hidden></p>
+
+      <p class="banden-alarm" id="banden-alarm" hidden>
+        <span aria-hidden="true">⚠</span>
+        <span id="banden-alarm-tekst"></span>
+      </p>
+
+      <!-- De auto van bovenaf; de neus wijst naar boven. -->
+      <div class="banden" id="banden" role="list">
+        <p class="banden-voor" aria-hidden="true"><span>&#9650;</span> voorzijde</p>
+
+        <div class="band band--lv" role="listitem" id="band-front_left">
+          <p class="band-plek">Linksvoor</p>
+          <p class="band-waarde"><span class="band-getal">–</span><span class="band-eenheid">&nbsp;bar</span></p>
+          <p class="band-staat">nog niet opgehaald</p>
+        </div>
+
+        <div class="band band--rv" role="listitem" id="band-front_right">
+          <p class="band-plek">Rechtsvoor</p>
+          <p class="band-waarde"><span class="band-getal">–</span><span class="band-eenheid">&nbsp;bar</span></p>
+          <p class="band-staat">nog niet opgehaald</p>
+        </div>
+
+        <svg class="banden-auto" viewBox="0 0 72 132" aria-hidden="true" focusable="false">
+          <!-- carrosserie van bovenaf -->
+          <path class="auto-vorm"
+                d="M36 3c9 0 14 7 15.5 15l1.5 14v76c0 12-4 22-17 22s-17-10-17-22V32l1.5-14C22 10 27 3 36 3z"/>
+          <!-- voorruit en achterruit -->
+          <path class="auto-ruit" d="M23.5 40h25l-2.5 12h-20z"/>
+          <path class="auto-ruit" d="M23 96h26l-2 11H25z"/>
+          <!-- de vier wielen op hun eigen plek; kleuren mee met de staat -->
+          <rect class="auto-wiel" id="wiel-front_left"  x="1"  y="26" width="11" height="26" rx="4"/>
+          <rect class="auto-wiel" id="wiel-front_right" x="60" y="26" width="11" height="26" rx="4"/>
+          <rect class="auto-wiel" id="wiel-rear_left"   x="1"  y="88" width="11" height="26" rx="4"/>
+          <rect class="auto-wiel" id="wiel-rear_right"  x="60" y="88" width="11" height="26" rx="4"/>
+        </svg>
+
+        <div class="band band--la" role="listitem" id="band-rear_left">
+          <p class="band-plek">Linksachter</p>
+          <p class="band-waarde"><span class="band-getal">–</span><span class="band-eenheid">&nbsp;bar</span></p>
+          <p class="band-staat">nog niet opgehaald</p>
+        </div>
+
+        <div class="band band--ra" role="listitem" id="band-rear_right">
+          <p class="band-plek">Rechtsachter</p>
+          <p class="band-waarde"><span class="band-getal">–</span><span class="band-eenheid">&nbsp;bar</span></p>
+          <p class="band-staat">nog niet opgehaald</p>
+        </div>
+      </div>
+
+      <p class="kaart-noot" id="banden-leeftijd"></p>
+      <p class="kaart-noot">Waarden in bar, zoals de auto ze doorgeeft. De omrekening (2070 → 2,07 bar) is aangenomen, niet bevestigd.</p>
+    </section>
+
+    <!-- ── 4. Kilometerstand ────────────────────────────────────────── -->
+    <section class="kaart" data-vereist="odometer" aria-labelledby="km-titel" hidden>
+      <h2 id="km-titel" class="kaart-titel">Kilometerstand</h2>
+      <p class="km-waarde">
+        <span class="km-getal" id="km-getal">–</span><span class="km-eenheid" id="km-eenheid">&nbsp;km</span>
+      </p>
+      <p class="kaart-noot" id="km-leeftijd"></p>
+      <p class="kaart-status" id="km-status" role="status" aria-live="polite" hidden></p>
+    </section>
+
+    <!-- ── 5. Locatie ───────────────────────────────────────────────── -->
+    <section class="kaart" data-vereist="location" aria-labelledby="locatie-titel" hidden>
+      <h2 id="locatie-titel" class="kaart-titel">Locatie</h2>
+
+      <p class="kaart-status" id="locatie-status" role="status" aria-live="polite" hidden></p>
+
+      <div class="locatie">
+        <svg class="kompas" viewBox="0 0 100 100" role="img" aria-labelledby="kompas-titel" focusable="false">
+          <title id="kompas-titel">Kompas: richting nog onbekend</title>
+          <circle class="kompas-ring" cx="50" cy="50" r="45"/>
+          <circle class="kompas-ring kompas-ring--binnen" cx="50" cy="50" r="35"/>
+          <g class="kompas-tik" aria-hidden="true">
+            <line x1="50" y1="5" x2="50" y2="13"/>
+            <line x1="95" y1="50" x2="87" y2="50"/>
+            <line x1="50" y1="95" x2="50" y2="87"/>
+            <line x1="5" y1="50" x2="13" y2="50"/>
+          </g>
+          <g class="kompas-letter" aria-hidden="true">
+            <text x="50" y="26" text-anchor="middle">N</text>
+            <text x="76" y="55" text-anchor="middle">O</text>
+            <text x="50" y="82" text-anchor="middle">Z</text>
+            <text x="24" y="55" text-anchor="middle">W</text>
+          </g>
+          <g id="kompas-naald" transform="rotate(0 50 50)">
+            <polygon class="kompas-naald" points="50,16 57,54 50,47 43,54"/>
+          </g>
+          <circle class="kompas-as" cx="50" cy="50" r="3"/>
+        </svg>
+
+        <div class="locatie-tekst">
+          <p class="richting" id="richting-tekst">Richting onbekend</p>
+          <p class="richting-graden" id="richting-graden">–</p>
+          <p class="coord" id="coord">Coördinaten nog niet opgehaald</p>
+          <p class="kaart-noot" id="locatie-leeftijd"></p>
+        </div>
+      </div>
+
+      <a class="knop knop--rand knop--groot" id="kaart-link" hidden
+         href="https://www.openstreetmap.org/" target="_blank" rel="noopener noreferrer">
+        Openen in OpenStreetMap
+      </a>
+      <button id="coord-kopieer" class="knop knop--rand knop--los" type="button" hidden>
+        Coördinaten kopiëren
+      </button>
+      <p class="knop-noot">De app haalt zelf geen kaart op. De link opent pas iets als jij erop tikt.</p>
+      <p class="visueel-verborgen" id="kopieer-status" role="status" aria-live="polite"></p>
     </section>
 
   </main>

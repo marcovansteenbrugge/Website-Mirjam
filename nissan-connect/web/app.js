@@ -131,8 +131,12 @@
   }
 
   const haalVoertuig = () => api('api/vehicle');
+  const haalMogelijkheden = () => api('api/capabilities');
   const haalAccu = () => api('api/battery');
   const haalKlimaat = () => api('api/climate');
+  const haalBanden = () => api('api/tyres');
+  const haalKilometerstand = () => api('api/odometer');
+  const haalLocatie = () => api('api/location');
   const startVerversen = () => api('api/battery/refresh', { methode: 'POST', body: {} });
   const startKlimaat = (temp) => api('api/climate/start', { methode: 'POST', body: { target_temp_c: temp } });
   const stopKlimaat = () => api('api/climate/stop', { methode: 'POST', body: {} });
@@ -235,6 +239,241 @@
   }
   setInterval(werkLeeftijdBij, 15000);
 
+  /* ── Wat kan déze auto? ──────────────────────────────────────
+     De server bepaalt het, de pagina schikt zich ernaar. Elk vak met
+     data-vereist="x" verschijnt alleen als /api/capabilities zegt dat x
+     kan. Zo hoeft er nergens anders in deze app een lijstje bijgehouden
+     te worden: een nieuw onderdeel toevoegen is één attribuut in de HTML. */
+  const ONDERDEEL_NAAM = {
+    battery: 'accu',
+    climate: 'voorverwarmen',
+    location: 'locatie',
+    odometer: 'kilometerstand',
+    tyres: 'bandenspanning',
+    doors: 'deuren',
+    charge_schedule: 'laadschema'
+  };
+
+  let mogelijk = Object.create(null);
+  const kan = (naam) => mogelijk[naam] === true;
+
+  function pasMogelijkhedenToe(caps) {
+    mogelijk = Object.create(null);
+    if (caps && typeof caps === 'object') {
+      Object.keys(caps).forEach((sleutel) => { mogelijk[sleutel] = caps[sleutel] === true; });
+    }
+
+    let zichtbaar = 0;
+    document.querySelectorAll('[data-vereist]').forEach((vak) => {
+      const aan = kan(vak.dataset.vereist);
+      vak.hidden = !aan;
+      if (aan) zichtbaar += 1;
+    });
+    el('niets-melding').hidden = zichtbaar > 0;
+
+    const wel = [];
+    const niet = [];
+    Object.keys(mogelijk).forEach((sleutel) => {
+      const naam = ONDERDEEL_NAAM[sleutel] || sleutel;
+      (mogelijk[sleutel] ? wel : niet).push(naam);
+    });
+    const regels = [];
+    if (wel.length) regels.push('Beschikbaar: ' + wel.join(', ') + '.');
+    if (niet.length) regels.push('Niet op deze auto: ' + niet.join(', ') + '.');
+    el('menu-mogelijkheden').textContent = regels.join(' ') || 'De server meldde geen onderdelen.';
+  }
+
+  /* Geeft de server geen (bruikbare) lijst, dan tonen we alleen wat er vóór
+     deze uitbreiding al werkte. Liever een onderdeel te weinig dan een knop
+     die het bij deze auto altijd begeeft. */
+  function valMogelijkhedenTerug(reden) {
+    pasMogelijkhedenToe({ battery: true, climate: true });
+    el('menu-mogelijkheden').textContent =
+      'De server gaf geen lijst met onderdelen (' + reden + '). Alleen accu en voorverwarmen worden getoond.';
+  }
+
+  /* ── Omrekeningen die de gebruiker moet kunnen lezen ─────── */
+
+  /* 254 minuten → "nog 4 uur 14" */
+  function laadtijdKort(minuten) {
+    const m = Math.max(0, Math.round(minuten));
+    if (m < 1) return 'bijna klaar';
+    if (m < 60) return 'nog ' + m + ' min';
+    const uren = Math.floor(m / 60);
+    const rest = m % 60;
+    return 'nog ' + uren + ' uur' + (rest ? ' ' + String(rest).padStart(2, '0') : '');
+  }
+  function laadtijdLang(minuten) {
+    const m = Math.max(0, Math.round(minuten));
+    if (m < 1) return 'Nog minder dan een minuut laden.';
+    if (m < 60) return 'Nog ' + m + (m === 1 ? ' minuut' : ' minuten') + ' laden.';
+    const uren = Math.floor(m / 60);
+    const rest = m % 60;
+    return 'Nog ' + uren + (uren === 1 ? ' uur' : ' uur') +
+      (rest ? ' en ' + rest + (rest === 1 ? ' minuut' : ' minuten') : '') + ' laden.';
+  }
+
+  /* 298° → west-noordwest (WNW). 16 streken, want dat is wat je nog kunt lezen. */
+  const STREKEN = [
+    ['noord', 'N'], ['noord-noordoost', 'NNO'], ['noordoost', 'NO'], ['oost-noordoost', 'ONO'],
+    ['oost', 'O'], ['oost-zuidoost', 'OZO'], ['zuidoost', 'ZO'], ['zuid-zuidoost', 'ZZO'],
+    ['zuid', 'Z'], ['zuid-zuidwest', 'ZZW'], ['zuidwest', 'ZW'], ['west-zuidwest', 'WZW'],
+    ['west', 'W'], ['west-noordwest', 'WNW'], ['noordwest', 'NW'], ['noord-noordwest', 'NNW']
+  ];
+  function streek(graden) {
+    const g = ((graden % 360) + 360) % 360;
+    return STREKEN[Math.round(g / 22.5) % 16];
+  }
+
+  /* ── Bandenspanning tonen ────────────────────────────────── */
+  const WIELEN = [
+    ['front_left', 'Linksvoor'],
+    ['front_right', 'Rechtsvoor'],
+    ['rear_left', 'Linksachter'],
+    ['rear_right', 'Rechtsachter']
+  ];
+
+  function toonBanden(banden) {
+    const slecht = [];
+    let onbekend = 0;
+
+    WIELEN.forEach(([sleutel, plek]) => {
+      const vak = el('band-' + sleutel);
+      const wiel = banden && banden[sleutel];
+      const bar = wiel && typeof wiel.bar === 'number' && isFinite(wiel.bar) ? wiel.bar : null;
+      const inOrde = wiel ? wiel.ok : null;
+
+      const getalVak = vak.querySelector('.band-getal');
+      const eenheid = vak.querySelector('.band-eenheid');
+      const staat = vak.querySelector('.band-staat');
+
+      // twee decimalen, met de Nederlandse komma
+      getalVak.textContent = bar === null ? '–' : getal(bar, 2);
+      eenheid.hidden = bar === null;
+
+      // Ook het wiel in de tekening kleurt mee, zodat de plek klopt met het getal.
+      const wielVorm = el('wiel-' + sleutel);
+
+      if (inOrde === false) {
+        vak.className = 'band band--' + plekKlasse(sleutel) + ' band--let-op';
+        staat.textContent = 'CONTROLEREN';
+        if (wielVorm) wielVorm.setAttribute('class', 'auto-wiel let-op');
+        slecht.push(plek.toLowerCase());
+      } else if (inOrde === true) {
+        vak.className = 'band band--' + plekKlasse(sleutel);
+        staat.textContent = 'in orde';
+        if (wielVorm) wielVorm.setAttribute('class', 'auto-wiel');
+      } else {
+        vak.className = 'band band--' + plekKlasse(sleutel) + ' band--onbekend';
+        staat.textContent = bar === null ? 'niet doorgegeven' : 'staat onbekend';
+        if (wielVorm) wielVorm.setAttribute('class', 'auto-wiel onbekend');
+        onbekend += 1;
+      }
+
+      // Eén zin per wiel voor de schermlezer; los van de ruimtelijke opmaak.
+      vak.setAttribute('aria-label',
+        plek + ': ' + (bar === null ? 'druk niet doorgegeven' : getal(bar, 2) + ' bar') +
+        (inOrde === false ? ', controleren' : inOrde === true ? ', in orde' : ', staat onbekend'));
+    });
+
+    const alarm = el('banden-alarm');
+    if (slecht.length) {
+      alarm.hidden = false;
+      el('banden-alarm-tekst').textContent = slecht.length === 1
+        ? 'De band ' + slecht[0] + ' is niet in orde. Controleer hem voor je wegrijdt.'
+        : 'Deze banden zijn niet in orde: ' + slecht.join(', ') + '. Controleer ze voor je wegrijdt.';
+    } else {
+      alarm.hidden = true;
+      el('banden-alarm-tekst').textContent = '';
+    }
+
+    const noot = el('banden-leeftijd');
+    const gemeten = leeftijdVan(banden);
+    if (gemeten !== null) noot.textContent = 'Gemeten ' + leeftijdTekst(gemeten) + '.';
+    else if (onbekend === 4) noot.textContent = 'De auto gaf geen bandgegevens door.';
+    else noot.textContent = '';
+  }
+
+  function plekKlasse(sleutel) {
+    return { front_left: 'lv', front_right: 'rv', rear_left: 'la', rear_right: 'ra' }[sleutel] || 'lv';
+  }
+
+  /* ── Kilometerstand tonen ────────────────────────────────── */
+  function toonKilometerstand(stand) {
+    const km = stand && typeof stand.total_km === 'number' && isFinite(stand.total_km)
+      ? stand.total_km : null;
+    el('km-getal').textContent = km === null ? '–' : getal(Math.round(km));  // 21.126
+    el('km-eenheid').hidden = km === null;
+
+    const gemeten = leeftijdVan(stand);
+    el('km-leeftijd').textContent = km === null
+      ? 'De auto gaf geen kilometerstand door.'
+      : (gemeten === null ? 'Zoals de auto hem het laatst doorgaf.' : 'Gemeten ' + leeftijdTekst(gemeten) + '.');
+  }
+
+  /* ── Locatie tonen ───────────────────────────────────────── */
+  let laatsteLocatie = null;
+
+  function toonLocatie(plek) {
+    const lat = plek && typeof plek.latitude === 'number' && isFinite(plek.latitude) ? plek.latitude : null;
+    const lon = plek && typeof plek.longitude === 'number' && isFinite(plek.longitude) ? plek.longitude : null;
+    const kop = plek && typeof plek.heading_degrees === 'number' && isFinite(plek.heading_degrees)
+      ? plek.heading_degrees : null;
+
+    laatsteLocatie = (lat !== null && lon !== null) ? { lat, lon } : null;
+
+    const richting = el('richting-tekst');
+    const graden = el('richting-graden');
+    const naald = el('kompas-naald');
+    const titel = el('kompas-titel');
+
+    if (kop === null) {
+      richting.textContent = 'Richting onbekend';
+      graden.textContent = 'De auto gaf geen kompasrichting door';
+      naald.setAttribute('transform', 'rotate(0 50 50)');
+      naald.style.opacity = '0.25';
+      titel.textContent = 'Kompas: richting onbekend';
+    } else {
+      const [naam, afkorting] = streek(kop);
+      const rond = Math.round(((kop % 360) + 360) % 360);
+      richting.textContent = 'Neus naar ' + naam;
+      graden.textContent = rond + '° · ' + afkorting;
+      naald.setAttribute('transform', 'rotate(' + rond + ' 50 50)');
+      naald.style.opacity = '1';
+      titel.textContent = 'Kompas: de auto wijst naar ' + naam + ', ' + rond + ' graden.';
+    }
+
+    const coord = el('coord');
+    const link = el('kaart-link');
+    const kopieer = el('coord-kopieer');
+
+    if (laatsteLocatie === null) {
+      coord.textContent = 'De auto gaf geen coördinaten door.';
+      link.hidden = true;
+      kopieer.hidden = true;
+    } else {
+      coord.textContent = getal(lat, 6) + ', ' + getal(lon, 6);
+      // Alleen een href: er gaat pas iets naar buiten als de gebruiker zelf tikt.
+      const a = lat.toFixed(6);
+      const b = lon.toFixed(6);
+      link.href = 'https://www.openstreetmap.org/?mlat=' + a + '&mlon=' + b + '#map=17/' + a + '/' + b;
+      link.hidden = false;
+      kopieer.hidden = false;
+    }
+
+    const gemeten = leeftijdVan(plek);
+    el('locatie-leeftijd').textContent = gemeten === null ? '' : 'Gemeten ' + leeftijdTekst(gemeten) + '.';
+  }
+
+  /* Leeftijd (in ms) uit stale_minutes of updated_at; null als onbekend. */
+  function leeftijdVan(data) {
+    if (data && typeof data.stale_minutes === 'number' && isFinite(data.stale_minutes)) {
+      return Math.max(0, data.stale_minutes) * 60000;
+    }
+    const t = data && data.updated_at ? Date.parse(data.updated_at) : NaN;
+    return isNaN(t) ? null : Math.max(0, Date.now() - t);
+  }
+
   /* ── Accu tonen ──────────────────────────────────────────── */
   function toonAccu(accu) {
     const soc = typeof accu.soc_percent === 'number' ? accu.soc_percent : null;
@@ -293,6 +532,39 @@
       soh.className = 'chip ' + (accu.state_of_health_percent < 80 ? 'chip--let-op' : 'chip--stil');
     } else {
       soh.hidden = true;
+    }
+
+    /* Beschikbare energie in de accu (batteryAvailableEnergy). */
+    const energie = el('chip-energie');
+    if (typeof accu.available_energy_kwh === 'number' && isFinite(accu.available_energy_kwh)) {
+      energie.hidden = false;
+      const kwh = accu.available_energy_kwh;
+      energie.textContent = 'Beschikbaar ' + getal(kwh, Number.isInteger(kwh) ? 0 : 1) + ' kWh';
+    } else {
+      energie.hidden = true;
+    }
+
+    /* Accutemperatuur levert deze auto normaal niet; tonen als hij het wél doet. */
+    const accutemp = el('chip-accutemp');
+    if (typeof accu.battery_temperature_c === 'number' && isFinite(accu.battery_temperature_c)) {
+      accutemp.hidden = false;
+      accutemp.textContent = 'Accu ' + getal(accu.battery_temperature_c, 0) + ' °C';
+    } else {
+      accutemp.hidden = true;
+    }
+
+    /* Resterende laadtijd: alleen als de auto daadwerkelijk laadt. Een
+       restduur bij een auto die niet laadt is een oud getal dat niets betekent. */
+    const laadtijd = el('laadtijd');
+    const minuten = accu.charging_remaining_minutes;
+    if (accu.charging === true && typeof minuten === 'number' && isFinite(minuten) && minuten >= 0) {
+      laadtijd.hidden = false;
+      el('laadtijd-waarde').textContent = laadtijdKort(minuten);   // "nog 4 uur 14"
+      el('laadtijd-lang').textContent = laadtijdLang(minuten);
+    } else {
+      laadtijd.hidden = true;
+      el('laadtijd-waarde').textContent = '–';
+      el('laadtijd-lang').textContent = '';
     }
 
     zetLeeftijdBron(accu);
@@ -358,6 +630,19 @@
     const aan = klimaat.running === true;
     el('klimaat-start').className = 'knop knop--groot ' + (aan ? 'knop--rand' : 'knop--primair');
     el('klimaat-stop').className = 'knop knop--groot knop--los ' + (aan ? 'knop--primair' : 'knop--rand');
+
+    /* De gemeten binnentemperatuur is iets ánders dan de streeftemperatuur.
+       Daarom een eigen vak, met één decimaal (16,0 °C) tegenover de hele
+       graden van de instelling — ook in de cijfers zie je meteen het verschil. */
+    const meting = el('binnen-meting');
+    const binnen = klimaat.internal_temperature_c;
+    if (typeof binnen === 'number' && isFinite(binnen)) {
+      meting.hidden = false;
+      el('binnen-waarde').textContent = getal(binnen, 1);
+    } else {
+      meting.hidden = true;
+      el('binnen-waarde').textContent = '–';
+    }
 
     if (temp !== null && !tempAangeraakt) zetTemp(temp, true);
     else werkStartKnopBij();
@@ -486,6 +771,42 @@
     }
   }
 
+  /* Eén gemis in een los kaartje is geen reden om het hele scherm rood te
+     maken: de melding blijft in de kaart zelf staan. */
+  function kaartStatus(id, tekst) {
+    const vak = el(id);
+    if (!vak) return;
+    vak.textContent = tekst || '';
+    vak.className = 'kaart-status' + (tekst ? ' kaart-status--fout' : '');
+    vak.hidden = !tekst;
+  }
+
+  async function laadOnderdeel(sleutel, ophalen, tonen, statusId) {
+    if (!kan(sleutel)) return false;
+    try {
+      tonen(await ophalen());
+      kaartStatus(statusId, '');
+      return true;
+    } catch (fout) {
+      if (fout.code === 'unauthorized' || fout.httpStatus === 401) {
+        toonFout(fout, '');
+        return false;
+      }
+      kaartStatus(statusId, 'Niet opgehaald. ' + foutRegel(fout));
+      return false;
+    }
+  }
+
+  function laadAlles(stil) {
+    return Promise.all([
+      kan('battery') ? laadAccuEnToon(stil) : Promise.resolve(false),
+      kan('climate') ? laadKlimaatEnToon(true) : Promise.resolve(false),
+      laadOnderdeel('tyres', haalBanden, toonBanden, 'banden-status'),
+      laadOnderdeel('odometer', haalKilometerstand, toonKilometerstand, 'km-status'),
+      laadOnderdeel('location', haalLocatie, toonLocatie, 'locatie-status')
+    ]);
+  }
+
   async function doeVerversen() {
     if (ergensBezig) return;
     ergensBezig = true;
@@ -496,7 +817,9 @@
     try {
       await volgJob(startVerversen);
       verversVoortgang.eind('Verse meting binnen.');
-      await laadAccuEnToon(false);
+      // Na een verse meting kunnen ook banden, kilometerstand en locatie
+      // bijgewerkt zijn; die halen we er stilletjes achteraan.
+      await laadAlles(false);
       meld('Verse meting opgehaald bij de auto.', 'goed');
     } catch (fout) {
       verversVoortgang.eind(null);
@@ -558,6 +881,18 @@
       ? 'Token bewaard in deze browser.'
       : 'Let op: deze browser bewaart niets — na sluiten moet het token opnieuw.';
 
+    /* Eerste aanroep: wat ondersteunt deze auto? Pas daarna wordt er iets
+       getoond of opgehaald. Zo verschijnt er nooit een kaart die 403 geeft. */
+    try {
+      pasMogelijkhedenToe(await haalMogelijkheden());
+    } catch (fout) {
+      if (fout.code === 'unauthorized' || fout.httpStatus === 401) {
+        toonFout(fout, '');
+        return;
+      }
+      valMogelijkhedenTerug('code ' + fout.code);
+    }
+
     try {
       const auto = await haalVoertuig();
       el('auto-naam').textContent = (auto && auto.nickname) || 'Ariya';
@@ -571,8 +906,7 @@
       if (fout.code === 'unauthorized' || fout.httpStatus === 401) return;
     }
 
-    await laadAccuEnToon(false);
-    await laadKlimaatEnToon(true);
+    await laadAlles(false);
   }
 
   /* ── Alles aan elkaar knopen ─────────────────────────────── */
@@ -620,10 +954,28 @@
     el('temp-plus').addEventListener('click', () => zetTemp(gewensteTemp + TEMP_STAP, false));
     el('temp-schuif').addEventListener('input', (e) => zetTemp(parseFloat(e.target.value), false));
 
+    el('coord-kopieer').addEventListener('click', async () => {
+      if (!laatsteLocatie) return;
+      const tekst = laatsteLocatie.lat.toFixed(6) + ', ' + laatsteLocatie.lon.toFixed(6);
+      const knop = el('coord-kopieer');
+      let gelukt = false;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(tekst);
+          gelukt = true;
+        }
+      } catch { gelukt = false; }
+      knop.textContent = gelukt ? 'Gekopieerd' : 'Kopiëren lukt niet in deze browser';
+      el('kopieer-status').textContent = gelukt
+        ? 'Coördinaten gekopieerd: ' + tekst
+        : 'Kopiëren lukte niet; de coördinaten staan hierboven.';
+      setTimeout(() => { knop.textContent = 'Coördinaten kopiëren'; }, 2500);
+    });
+
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         werkLeeftijdBij();
-        if (!ergensBezig && !el('app').hidden && opslag.lees()) laadAccuEnToon(true);
+        if (!ergensBezig && !el('app').hidden && opslag.lees()) laadAlles(true);
       }
     });
   }

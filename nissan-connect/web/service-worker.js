@@ -2,7 +2,7 @@
    Cachet ALLEEN de app-schil. API-antwoorden worden nooit gecachet:
    een oude accustand tonen alsof hij vers is, is precies wat deze app niet mag doen. */
 
-const CACHE = 'ariya-schil-v1';
+const CACHE = 'ariya-schil-v2';
 
 const SCHIL = [
   './',

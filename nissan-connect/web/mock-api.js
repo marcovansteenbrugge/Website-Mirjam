@@ -10,6 +10,12 @@
      ?mock=1&traag=1        opdrachten duren ~25 s in plaats van ~6 s
      ?mock=1&fout=nooit     de auto antwoordt nooit (toont de 120 s-limiet)
      ?mock=1&fout=vehicle_asleep   de eerstvolgende opdracht mislukt zo
+     ?mock=1&laadtijd=254   vaste resterende laadtijd in minuten
+     ?mock=1&band=rear_left een band staat op "niet in orde"
+     ?mock=1&richting=298   kompasrichting van de auto in graden
+     ?mock=1&binnen=16      gemeten binnentemperatuur
+     ?mock=1&km=21126       kilometerstand
+     ?mock=1&zonder=tyres,location   die onderdelen staan in capabilities op false
 */
 (() => {
   'use strict';
@@ -42,23 +48,60 @@
     leeg: p.get('leeg') === '1',
     klimaatAan: false,
     klimaatTemp: 21,
-    klimaatGemeten: Date.now() - getNum('leeftijd', 42) * 60000
+    klimaatGemeten: Date.now() - getNum('leeftijd', 42) * 60000,
+    // gemeten binnentemperatuur — iets anders dan klimaatTemp (de instelling)
+    binnen: getNum('binnen', 16),
+    km: getNum('km', 21126),
+    // waarden zoals de echte auto ze gaf (ruw 2070 → 2,07 bar)
+    banden: { front_left: 2.07, front_right: 2.01, rear_left: 2.16, rear_right: 2.10 },
+    bandLek: p.get('band') || '',
+    lat: 51.675196944444444,
+    lon: 5.042029166666667,
+    richting: getNum('richting', 298),
+    locatieGemeten: Date.now() - 4 * 60000
+  };
+
+  const WIELEN = ['front_left', 'front_right', 'rear_left', 'rear_right'];
+
+  /* Deuren en laadschema geven bij deze auto 403: hier staan ze dus op false,
+     zodat je kunt zien dat die kaarten helemaal niet verschijnen. */
+  const UIT = (p.get('zonder') || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const mogelijkhedenPayload = () => {
+    const c = {
+      battery: true, climate: true, location: true,
+      odometer: true, tyres: true, doors: false, charge_schedule: false
+    };
+    UIT.forEach((sleutel) => { if (sleutel in c) c[sleutel] = false; });
+    return c;
   };
 
   let volgendeFout = p.get('fout') || '';
   const jobs = new Map();
   let teller = 0;
 
-  /* Accu loopt langzaam leeg, of loopt op aan de lader. */
+  /* Accu loopt langzaam leeg, of loopt op aan de lader.
+     De binnentemperatuur kruipt naar de streeftemperatuur als het
+     voorverwarmen aan staat, en anders terug naar buitentemperatuur. */
   setInterval(() => {
     staat.soc = staat.laden
       ? Math.min(100, staat.soc + 0.3)
       : Math.max(0, staat.soc - 0.05);
     if (staat.laden && staat.soc >= 100) staat.laden = false;
+
+    const doel = staat.klimaatAan ? staat.klimaatTemp : 8;
+    staat.binnen += Math.max(-0.4, Math.min(0.4, (doel - staat.binnen) * 0.15));
   }, 10000);
 
   const bereik = () => Math.round((staat.soc / 100) * 430);
   const oudMinuten = () => Math.max(0, Math.floor((Date.now() - staat.gemeten) / 60000));
+
+  /* Resterende laadtijd: ruwweg de tijd tot 100% bij 6,6 kW. */
+  const laadMinuten = () => {
+    const vast = parseFloat(p.get('laadtijd'));
+    if (isFinite(vast)) return Math.round(vast);
+    const teGaan = Math.max(0, (100 - staat.soc) / 100) * auto.battery_capacity_kwh;
+    return Math.round((teGaan / 6.6) * 60);
+  };
 
   const accuPayload = () => ({
     soc_percent: Math.round(staat.soc),
@@ -67,6 +110,12 @@
     plugged_in: staat.stekker,
     battery_capacity_kwh: auto.battery_capacity_kwh,
     state_of_health_percent: staat.leeg ? null : staat.soh,
+    // chargingRemainingTime — alleen zinnig terwijl hij laadt
+    charging_remaining_minutes: staat.laden && !staat.leeg ? laadMinuten() : null,
+    // batteryAvailableEnergy
+    available_energy_kwh: staat.leeg ? null : Math.round((staat.soc / 100) * auto.battery_capacity_kwh),
+    // batteryTemperature gaf 0 op de echte auto → null
+    battery_temperature_c: null,
     updated_at: new Date(staat.gemeten).toISOString(),
     stale_minutes: oudMinuten()
   });
@@ -74,7 +123,32 @@
   const klimaatPayload = () => ({
     running: staat.klimaatAan,
     target_temp_c: staat.klimaatTemp,
+    // internalTemperature: de gemeten binnentemperatuur, niet de instelling
+    internal_temperature_c: staat.leeg ? null : Math.round(staat.binnen * 10) / 10,
     updated_at: new Date(staat.klimaatGemeten).toISOString()
+  });
+
+  const bandenPayload = () => {
+    const uit = {};
+    WIELEN.forEach((wiel) => {
+      const lek = staat.bandLek === wiel;
+      uit[wiel] = { bar: lek ? 1.45 : staat.banden[wiel], ok: !lek };
+    });
+    uit.updated_at = null;   // de echte auto geeft hier geen tijdstip bij
+    return uit;
+  };
+
+  const kilometerstandPayload = () => ({
+    total_km: Math.round(staat.km),
+    updated_at: null
+  });
+
+  const locatiePayload = () => ({
+    latitude: staat.lat,
+    longitude: staat.lon,
+    heading_degrees: staat.richting,
+    updated_at: new Date(staat.locatieGemeten).toISOString(),
+    stale_minutes: Math.max(0, Math.floor((Date.now() - staat.locatieGemeten) / 60000))
   });
 
   /* ── Foutafhandeling zoals in het contract ────────────────── */
@@ -87,17 +161,19 @@
     upstream_error: 'Nissan geeft een storing terug.',
     invalid_request: 'De opdracht klopt niet (temperatuur moet een hele graad van 16 t/m 26 zijn).',
     // Niet in de codelijst van het contract: test of de app een onbekende code netjes doorgeeft.
-    subscription_expired: 'Je Nissan Connect-abonnement lijkt verlopen. Verleng het in de Nissan-app.'
+    subscription_expired: 'Je Nissan Connect-abonnement lijkt verlopen. Verleng het in de Nissan-app.',
+    // Nissan geeft 403 op wat deze auto niet kan (deuren, laadschema, …).
+    not_supported: 'Deze auto ondersteunt dit onderdeel niet.'
   };
   const HERHAALBAAR = {
     unauthorized: false, nissan_auth_failed: false, vehicle_asleep: true,
     rate_limited: true, not_plugged_in: false, upstream_error: true, invalid_request: false,
-    subscription_expired: false
+    subscription_expired: false, not_supported: false
   };
   const HTTP_CODE = {
     unauthorized: 401, nissan_auth_failed: 502, vehicle_asleep: 503,
     rate_limited: 429, not_plugged_in: 409, upstream_error: 502, invalid_request: 400,
-    subscription_expired: 403
+    subscription_expired: 403, not_supported: 403
   };
   /* Welke fouten komen meteen terug, en welke pas als de job mislukt? */
   const METEEN = ['unauthorized', 'nissan_auth_failed', 'rate_limited', 'not_plugged_in', 'invalid_request', 'subscription_expired'];
@@ -136,9 +212,22 @@
     const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
     if (!token || token === 'fout') return foutAntwoord('unauthorized');
 
+    if (weg === 'api/capabilities' && methode === 'GET') return json(mogelijkhedenPayload());
     if (weg === 'api/vehicle' && methode === 'GET') return json(auto);
     if (weg === 'api/battery' && methode === 'GET') return json(accuPayload());
     if (weg === 'api/climate' && methode === 'GET') return json(klimaatPayload());
+
+    /* Onderdelen die deze auto niet heeft, blijven ook hier dicht: 403,
+       net als bij Nissan zelf. De app hoort ze nooit op te vragen. */
+    if (weg === 'api/tyres' && methode === 'GET') {
+      return mogelijkhedenPayload().tyres ? json(bandenPayload()) : foutAntwoord('not_supported');
+    }
+    if (weg === 'api/odometer' && methode === 'GET') {
+      return mogelijkhedenPayload().odometer ? json(kilometerstandPayload()) : foutAntwoord('not_supported');
+    }
+    if (weg === 'api/location' && methode === 'GET') {
+      return mogelijkhedenPayload().location ? json(locatiePayload()) : foutAntwoord('not_supported');
+    }
 
     if (weg.startsWith('api/jobs/') && methode === 'GET') {
       const id = weg.slice('api/jobs/'.length);
@@ -301,7 +390,19 @@
     stekker.textContent = 'stekker aan/uit';
     stekker.addEventListener('click', () => { staat.stekker = !staat.stekker; if (!staat.stekker) staat.laden = false; });
 
-    rij.append(label, keuzeVeld, oud, laad, stekker);
+    const band = document.createElement('button');
+    band.type = 'button';
+    band.textContent = 'band linksachter zakt in/uit';
+    band.addEventListener('click', () => {
+      staat.bandLek = staat.bandLek === 'rear_left' ? '' : 'rear_left';
+    });
+
+    const draai = document.createElement('button');
+    draai.type = 'button';
+    draai.textContent = 'auto 45° draaien';
+    draai.addEventListener('click', () => { staat.richting = (staat.richting + 45) % 360; });
+
+    rij.append(label, keuzeVeld, oud, laad, stekker, band, draai);
     balk.append(titel, vouw, rij);
     document.body.append(balk);
   }

@@ -351,6 +351,184 @@ body {
   font-size: 0.75rem; color: var(--tekst-gedempt); margin-top: -0.2rem;
 }
 
+/* ── Kleine regels die in meerdere kaarten terugkomen ──────── */
+.kaart-noot {
+  font-size: 0.78rem; line-height: 1.4; color: var(--tekst-gedempt);
+  margin-top: 0.6rem;
+}
+.kaart-status {
+  font-size: 0.88rem; font-weight: 600;
+  padding: 0.6rem 0.75rem; border-radius: 12px;
+  border: 1px solid var(--rand); background: var(--vlak-hoog);
+  color: var(--tekst-zacht); margin-bottom: 0.85rem;
+}
+.kaart-status--fout { border-color: var(--alarm); background: var(--alarm-donker); color: #FFD9D5; }
+
+/* Badge die zegt wélk soort getal je ziet: een meting of een instelling. */
+.merk {
+  font-size: 0.66rem; font-weight: 800; letter-spacing: 0.12em;
+  text-transform: uppercase; padding: 0.2rem 0.45rem;
+  border-radius: 999px; border: 1px solid currentColor; flex: none;
+}
+.merk--meting { color: var(--koel); }
+.merk--instelling { color: var(--accent); }
+
+/* ── Accu: resterende laadtijd ─────────────────────────────── */
+.laadtijd {
+  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+  padding: 0.7rem 0.85rem; border-radius: 12px;
+  border: 1px solid var(--accent); background: var(--accent-donker);
+  color: var(--accent); margin-bottom: 0.9rem;
+}
+.laadtijd-punt {
+  width: 10px; height: 10px; border-radius: 50%; flex: none;
+  background: currentColor; animation: knipper 1.6s ease-in-out infinite;
+}
+.laadtijd-label {
+  font-size: 0.72rem; font-weight: 800; letter-spacing: 0.12em;
+  text-transform: uppercase; opacity: 0.85;
+}
+.laadtijd-waarde {
+  margin-left: auto; font-size: 1.15rem; font-weight: 800;
+  font-variant-numeric: tabular-nums; color: var(--tekst);
+}
+
+/* ── Klimaat: gemeten binnentemperatuur (géén instelling) ──── */
+.meting {
+  border: 2px dashed rgba(111, 182, 255, 0.55);
+  border-radius: 14px;
+  background: rgba(111, 182, 255, 0.08);
+  padding: 0.8rem 0.85rem 0.75rem;
+  margin-bottom: 0.9rem;
+}
+.meting-kop {
+  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+  font-size: 0.82rem; font-weight: 700; color: var(--tekst-zacht);
+  margin-bottom: 0.35rem;
+}
+.meting-waarde {
+  font-size: 2rem; font-weight: 700; line-height: 1.1;
+  font-variant-numeric: tabular-nums; color: var(--koel);
+}
+.meting-eenheid { font-size: 0.55em; font-weight: 700; }
+.meting-noot { font-size: 0.78rem; color: var(--tekst-gedempt); margin-top: 0.25rem; }
+
+.instelgroep-kop {
+  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+  font-size: 0.82rem; font-weight: 700; color: var(--tekst-zacht);
+  margin-bottom: 0.6rem;
+}
+
+/* ── Bandenspanning: de auto van bovenaf ───────────────────── */
+.banden {
+  display: grid;
+  grid-template-columns: 1fr minmax(54px, 72px) 1fr;
+  grid-template-rows: auto auto auto;
+  grid-template-areas:
+    "voor voor voor"
+    "lv   auto  rv"
+    "la   auto  ra";
+  gap: 0.5rem;
+  align-items: center;
+}
+.banden-auto {
+  grid-area: auto;
+  width: 100%; height: 100%;
+  max-height: 200px; min-height: 130px;
+  justify-self: center;
+}
+.auto-vorm { fill: var(--vlak-hoog); stroke: var(--rand); stroke-width: 2; }
+.auto-ruit { fill: var(--rand); opacity: 0.7; }
+.auto-wiel { fill: var(--tekst-gedempt); }
+.auto-wiel.let-op { fill: var(--alarm); }
+.auto-wiel.onbekend { fill: var(--rand); }
+.banden-voor {
+  grid-area: voor; justify-self: center;
+  display: flex; align-items: center; gap: 0.3rem;
+  font-size: 0.66rem; font-weight: 800; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--tekst-gedempt);
+  margin-bottom: 0.1rem;
+}
+.banden-voor span { font-size: 0.7em; }
+
+.band {
+  border: 1px solid var(--rand); border-radius: 14px;
+  background: var(--vlak-hoog); padding: 0.6rem 0.55rem;
+  min-height: 84px;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.band--lv { grid-area: lv; }
+.band--rv { grid-area: rv; text-align: right; }
+.band--la { grid-area: la; }
+.band--ra { grid-area: ra; text-align: right; }
+
+.band-plek {
+  font-size: 0.68rem; font-weight: 800; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--tekst-gedempt);
+}
+.band-waarde { line-height: 1.15; margin: 0.15rem 0 0.1rem; }
+.band-getal {
+  font-size: 1.5rem; font-weight: 800;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+}
+.band-eenheid { font-size: 0.85rem; font-weight: 600; color: var(--tekst-zacht); }
+.band-staat { font-size: 0.72rem; color: var(--tekst-gedempt); }
+
+.band--let-op {
+  border-color: var(--alarm); border-width: 2px;
+  background: var(--alarm-donker);
+  animation: pulseRand 2.4s ease-in-out infinite;
+}
+.band--let-op .band-getal,
+.band--let-op .band-staat,
+.band--let-op .band-plek { color: var(--alarm); }
+.band--let-op .band-staat { font-weight: 800; }
+.band--onbekend .band-getal { color: var(--tekst-gedempt); }
+
+.banden-alarm {
+  display: flex; gap: 0.5rem; align-items: flex-start;
+  border: 1px solid var(--alarm); background: var(--alarm-donker);
+  color: #FFD9D5; border-radius: 12px; padding: 0.7rem 0.85rem;
+  font-weight: 700; font-size: 0.95rem; margin-bottom: 0.9rem;
+}
+
+/* ── Kilometerstand ────────────────────────────────────────── */
+.km-waarde { line-height: 1.05; }
+.km-getal {
+  font-size: clamp(2.2rem, 13vw, 3rem); font-weight: 800;
+  letter-spacing: -0.03em; font-variant-numeric: tabular-nums;
+}
+.km-eenheid { font-size: 1.1rem; font-weight: 700; color: var(--tekst-zacht); }
+
+/* ── Locatie ───────────────────────────────────────────────── */
+.locatie {
+  display: flex; align-items: center; gap: 0.9rem;
+  flex-wrap: wrap;
+}
+.kompas { width: 96px; height: 96px; flex: none; }
+.kompas-ring { fill: var(--vlak-hoog); stroke: var(--rand); stroke-width: 2; }
+.kompas-ring--binnen { fill: none; stroke-dasharray: 3 5; opacity: 0.8; }
+.kompas-tik line { stroke: var(--tekst-gedempt); stroke-width: 2.5; }
+.kompas-letter text {
+  fill: var(--tekst-gedempt); font-size: 13px; font-weight: 700;
+  font-family: inherit;
+}
+.kompas-naald { fill: var(--accent); }
+.kompas-as { fill: var(--tekst); }
+#kompas-naald { transition: transform 0.5s ease; }
+
+.locatie-tekst { min-width: 9rem; flex: 1 1 9rem; }
+.richting { font-size: 1.25rem; font-weight: 800; line-height: 1.2; }
+.richting-graden {
+  font-size: 0.95rem; font-weight: 600; color: var(--tekst-zacht);
+  font-variant-numeric: tabular-nums;
+}
+.coord {
+  font-size: 0.92rem; color: var(--tekst-zacht); margin-top: 0.35rem;
+  font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+}
+.locatie + .knop, #kaart-link { margin-top: 0.9rem; }
+
 /* ── Voet ──────────────────────────────────────────────────── */
 .voet {
   text-align: center; font-size: 0.75rem; color: var(--tekst-gedempt);
@@ -364,6 +542,21 @@ body {
   .knop--stap { width: 56px; height: 56px; font-size: 1.75rem; }
   .accu-naast { padding-bottom: 0.6rem; }
   .leeftijd { font-size: 0.92rem; }
+
+  /* Banden: de auto wordt smaller zodat de vier waarden heel blijven. */
+  .banden { grid-template-columns: 1fr 44px 1fr; gap: 0.4rem 0.35rem; }
+  .banden-auto { min-height: 112px; }
+  .band { padding: 0.5rem 0.45rem; min-height: 78px; }
+  .band-getal { font-size: 1.3rem; }
+  .band-plek { font-size: 0.62rem; letter-spacing: 0.04em; }
+  .band-staat { font-size: 0.68rem; }
+
+  .kompas { width: 78px; height: 78px; }
+  .locatie { gap: 0.7rem; }
+  .locatie-tekst { flex-basis: 7.5rem; min-width: 7.5rem; }
+  .richting { font-size: 1.1rem; }
+  .coord { font-size: 0.85rem; }
+  .laadtijd-waarde { font-size: 1.05rem; }
 }
 
 /* ── Licht systeemthema: iets zachter, blijft donker ───────── */
