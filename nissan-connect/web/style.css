@@ -1,6 +1,10 @@
 /* ============================================================
    Ariya Connect — eigen bediening voor accu en voorverwarmen
    Donker eerst: dit ding wordt 's avonds op een oprit gebruikt.
+
+   Indeling: drie kolommen (accu · temperatuur · overig) met
+   grid-template-areas, zodat de volgorde per breedte expliciet
+   in de stylesheet staat en niet uit de DOM-volgorde volgt.
    ============================================================ */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -13,17 +17,39 @@
 
   --tekst: #F4F7F9;
   --tekst-zacht: #A9B7C2;
-  --tekst-gedempt: #778693;
+  /* Gemeten, niet geschat: #778693 haalde op --vlak-hoog maar 4,30:1.
+     #8A99A6 haalt 5,5:1 daar en 5,1:1 op de donkerrode statusvlakken. */
+  --tekst-gedempt: #8A99A6;
 
-  --accent: #34D89B;          /* accu / bevestiging */
+  /* Bedieningskleur. Uitsluitend voor knoppen, focus en de schuif —
+     nooit om een toestand mee aan te duiden. */
+  --accent: #34D89B;
   --accent-donker: #0E3A2C;
   --accent-tekst: #04241A;
 
-  --waarschuwing: #FFC24D;    /* data wordt oud */
-  --waarschuwing-donker: #3A2C08;
-  --alarm: #FF6B5E;           /* data is oud / fout */
-  --alarm-donker: #3B1512;
-  --koel: #6FB6FF;            /* klimaat */
+  /* Statuskleuren: gereserveerd en vast. Alleen voor toestand, en
+     altijd samen met een woord of pictogram — kleur draagt hier nooit
+     in z'n eentje de betekenis. */
+  --goed:    #0ca30c;
+  --let-op:  #fab219;
+  --ernstig: #ec835a;
+  --kritiek: #d03b3b;
+
+  /* Dezelfde vier kleuren, één stap richting het kaartvlak: de
+     onopgevulde baan van een meter en de achtergrond van een statuspil.
+     Geen grijs — zo leest de toestand over de hele ring. */
+  --goed-baan:    #104518;
+  --let-op-baan:  #453519;
+  --ernstig-baan: #423021;
+  --kritiek-baan: #3B2023;
+
+  /* Meting (aflezen, niet instellen). Ook dit is géén statuskleur. */
+  --koel: #6FB6FF;
+  --koel-baan: #21354C;
+
+  /* Vlakkleur waar meters op liggen; kaarten met een eigen achtergrond
+     zetten hem opnieuw. */
+  --meter-vlak: var(--vlak);
 
   --radius: 18px;
   --raak: 48px;               /* minimale aanraakmaat, ruim boven 44px */
@@ -39,6 +65,8 @@ body {
   font-size: 16px;
   min-height: 100vh;
   -webkit-tap-highlight-color: rgba(52, 216, 155, 0.25);
+  /* Harde eis: nooit horizontaal schuiven, ook niet op 320px. */
+  overflow-x: hidden;
 }
 
 [hidden] { display: none !important; }
@@ -79,6 +107,7 @@ body {
   gap: 0.5rem;
   transition: background-color 0.15s ease, transform 0.08s ease, opacity 0.15s ease;
   touch-action: manipulation;
+  text-align: center;
 }
 .knop:active { transform: scale(0.985); }
 .knop--groot { width: 100%; min-height: 60px; font-size: 1.05rem; }
@@ -94,7 +123,6 @@ body {
   font-size: 0.8rem; color: var(--tekst-gedempt);
   margin-top: 0.5rem; text-align: center;
 }
-.knop-paar { display: grid; gap: 0.6rem; margin-top: 0.25rem; }
 .knop--los { margin-top: 0.6rem; }
 
 /* De temperatuur hoort bij de startknop: één omlijnde groep, geen losse opslaan-knop. */
@@ -108,7 +136,7 @@ body {
   font-size: 0.82rem; line-height: 1.35; color: var(--tekst-zacht);
   text-align: center; margin: 0.4rem 0 0.8rem;
 }
-.instelgroep-noot--let-op { color: var(--waarschuwing); font-weight: 600; }
+.instelgroep-noot--let-op { color: var(--let-op); font-weight: 600; }
 
 /* ── Tokenscherm ───────────────────────────────────────────── */
 .token-scherm {
@@ -143,12 +171,12 @@ body {
 }
 .veld-rij input { width: 22px; height: 22px; accent-color: var(--accent); }
 .veld-rij label { padding: 0.5rem 0; }
-.token-fout { color: var(--alarm); font-size: 0.9rem; margin: 0.75rem 0; min-height: 1.2em; }
+.token-fout { color: #FFC9C4; font-size: 0.9rem; margin: 0.75rem 0; min-height: 1.2em; }
 .token-kaart .knop { width: 100%; margin-top: 0.5rem; }
 
 /* ── Raamwerk ──────────────────────────────────────────────── */
 .app {
-  max-width: 34rem; margin-inline: auto;
+  max-width: 74rem; margin-inline: auto;
   padding: max(0.75rem, env(safe-area-inset-top)) 0.75rem
            calc(1rem + env(safe-area-inset-bottom));
 }
@@ -169,13 +197,84 @@ body {
 .menu-regel { font-size: 0.85rem; color: var(--tekst-zacht); margin-bottom: 0.75rem; }
 .menu-paneel .knop { width: 100%; }
 
-.hoofd { display: grid; gap: 0.9rem; }
+/* Meldingen staan als flex-kinderen bóven het raster: staat er geen
+   melding, dan valt het element én de tussenruimte helemaal weg. */
+.hoofd { display: flex; flex-direction: column; gap: 0.9rem; }
+
+/* ── Het kolommenraster ────────────────────────────────────────
+   Telefoon: één kolom, in de volgorde accu → temperatuur → overig. */
+.raster {
+  display: grid;
+  gap: 0.9rem;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "accu"
+    "temp"
+    "overig";
+}
+.kolom--accu   { grid-area: accu; }
+.kolom--temp   { grid-area: temp; }
+.kolom--overig { grid-area: overig; }
+
+.kolom { min-width: 0; display: flex; flex-direction: column; gap: 0.9rem; }
+
+/* De restkolom vult zichzelf op: staat hij over de volle breedte, dan
+   naast elkaar; staat hij als smalle kolom, dan onder elkaar.
+   min() houdt hem ook onder 272px heel — geen overloop op 320px. */
+.kolom--overig {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(17rem, 100%), 1fr));
+  align-items: start;
+}
+
+/* Tussenmaat (vanaf ~640px): twee kolommen. */
+@media (min-width: 40rem) {
+  .raster {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "accu   temp"
+      "overig overig";
+  }
+  .raster.zonder-accu   { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+                          grid-template-areas: "temp temp" "overig overig"; }
+  .raster.zonder-temp   { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+                          grid-template-areas: "accu accu" "overig overig"; }
+  .raster.zonder-overig { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+                          grid-template-areas: "accu temp"; }
+}
+
+/* Vanaf ~1024px: drie kolommen naast elkaar.
+   Links de accu, in het midden de temperatuur, rechts al het overige. */
+@media (min-width: 64rem) {
+  .raster {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.08fr);
+    grid-template-areas: "accu temp overig";
+  }
+  /* Valt een hele kolom weg omdat capabilities hem uitzet, dan blijft er
+     geen lege baan over. */
+  .raster.zonder-accu   { grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
+                          grid-template-areas: "temp overig"; }
+  .raster.zonder-temp   { grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
+                          grid-template-areas: "accu overig"; }
+  .raster.zonder-overig { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+                          grid-template-areas: "accu temp"; }
+}
+
+/* Container queries waar ze echt helpen: de meterkaarten schikken zich
+   naar de breedte van hun eigen kolom, niet naar die van het scherm.
+   Hierboven staat de gewone media-query-indeling als vangnet; hieronder
+   alleen de verfijning, met @supports eromheen. */
+@supports (container-type: inline-size) {
+  .kolom { container-type: inline-size; }
+}
 
 .kaart {
   background: var(--vlak);
   border: 1px solid var(--rand);
   border-radius: var(--radius);
   padding: 1.1rem 1rem 1.25rem;
+  min-width: 0;
 }
 .kaart-titel {
   font-size: 0.78rem; font-weight: 700; text-transform: uppercase;
@@ -190,79 +289,198 @@ body {
 }
 .melding-tekst { font-weight: 600; }
 .melding-detail { font-size: 0.85rem; color: var(--tekst-zacht); margin-top: 0.35rem; }
-.melding--fout { background: var(--alarm-donker); border-color: var(--alarm); color: #FFD9D5; }
-.melding--fout .melding-detail { color: #FFBDB6; }
-.melding--goed { background: var(--accent-donker); border-color: var(--accent); color: #C6F7E4; }
-.melding--goed .melding-detail { color: #9FE9CE; }
-.melding--let-op { background: var(--waarschuwing-donker); border-color: var(--waarschuwing); color: #FFE6B4; }
+.melding--fout { background: var(--kritiek-baan); border-color: var(--kritiek); color: #FFE0DD; }
+.melding--fout .melding-detail { color: #F6C7C2; }
+.melding--goed { background: var(--goed-baan); border-color: var(--goed); color: #D6F5D6; }
+.melding--goed .melding-detail { color: #B4E6B4; }
+.melding--let-op { background: var(--let-op-baan); border-color: var(--let-op); color: #FFEBC4; }
 
 /* ── Leeftijd van de meting ────────────────────────────────── */
 .leeftijd {
   display: flex; align-items: flex-start; gap: 0.55rem;
-  font-weight: 700; font-size: 1rem;
-  padding: 0.7rem 0.85rem; border-radius: 12px;
+  font-weight: 700; font-size: 0.95rem;
+  padding: 0.65rem 0.8rem; border-radius: 12px;
   border: 1px solid var(--rand); background: var(--vlak-hoog);
-  margin-bottom: 1rem;
+  margin-bottom: 0.9rem;
 }
 .leeftijd-punt {
   width: 12px; height: 12px; border-radius: 50%;
   background: var(--tekst-gedempt); flex: none; margin-top: 0.42em;
 }
-.leeftijd--vers { color: var(--accent); border-color: rgba(52, 216, 155, 0.45); background: var(--accent-donker); }
-.leeftijd--vers .leeftijd-punt { background: var(--accent); }
-.leeftijd--oud { color: var(--waarschuwing); border-color: var(--waarschuwing); background: var(--waarschuwing-donker); }
-.leeftijd--oud .leeftijd-punt { background: var(--waarschuwing); }
+.leeftijd--vers { color: #D6F5D6; border-color: var(--goed); background: var(--goed-baan); }
+.leeftijd--vers .leeftijd-punt { background: var(--goed); }
+.leeftijd--oud { color: #FFEBC4; border-color: var(--let-op); background: var(--let-op-baan); }
+.leeftijd--oud .leeftijd-punt { background: var(--let-op); }
 .leeftijd--zeer-oud,
 .leeftijd--onbekend {
-  color: #FFD9D5; border-color: var(--alarm); background: var(--alarm-donker);
-  font-size: 1.05rem;
+  color: #FFE0DD; border-color: var(--kritiek); background: var(--kritiek-baan);
 }
 .leeftijd--zeer-oud .leeftijd-punt,
-.leeftijd--onbekend .leeftijd-punt { background: var(--alarm); }
+.leeftijd--onbekend .leeftijd-punt { background: var(--kritiek); }
 .leeftijd--zeer-oud { animation: pulseRand 2.4s ease-in-out infinite; }
 
 @keyframes pulseRand {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 94, 0.0); }
-  50%      { box-shadow: 0 0 0 4px rgba(255, 107, 94, 0.18); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(208, 59, 59, 0.0); }
+  50%      { box-shadow: 0 0 0 4px rgba(208, 59, 59, 0.20); }
 }
+
+/* ============================================================
+   De radiale meter — één component, zes keer gebruikt
+   Dunne buitenring, fijne schaalstreepjes, een gloed die de
+   kleur van de waarde volgt. Geen randen die pulseren, geen
+   glasreflecties: het vakwerk moet het doen.
+   ============================================================ */
+.meter {
+  position: relative;
+  width: 100%;
+  margin-inline: auto;
+  /* --vul en --baan worden per meter door app.js gezet.
+     --meter-vlak staat bewust NIET hier maar op :root, zodat een kaart
+     met een eigen achtergrond (.meting, .band) hem kan overschrijven
+     en het kopje op de boog zijn ring in de juiste vlakkleur krijgt. */
+  --vul: var(--tekst-gedempt);
+  --baan: var(--rand);
+}
+@supports (container-type: inline-size) {
+  .meter { container-type: inline-size; }
+}
+.meter-svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+.meter--hoofd  { max-width: 17rem; }
+.meter--meting { max-width: 13.5rem; }
+.meter--band   { max-width: 6rem; }
+
+.meter-ring {
+  fill: none; stroke: var(--rand); stroke-width: 0.5; opacity: 0.75;
+}
+.meter-tik { stroke: var(--rand); stroke-width: 0.5; }
+.meter-tik--grof { stroke: var(--tekst-gedempt); stroke-width: 0.9; opacity: 0.85; }
+
+.meter-baan {
+  fill: none; stroke: var(--baan);
+  stroke-width: 7; stroke-linecap: butt;
+}
+.meter--band .meter-baan { stroke-width: 9; }
+
+.meter-vul {
+  fill: none; stroke: var(--vul);
+  stroke-width: 7; stroke-linecap: round;
+  transition: stroke-dashoffset 0.9s cubic-bezier(0.22, 0.75, 0.2, 1), stroke 0.3s ease;
+}
+.meter--band .meter-vul { stroke-width: 9; }
+
+/* De gloed: twee bredere, doorschijnende lagen van dezelfde kleur.
+   Volgt de waarde automatisch, want het is dezelfde --vul. */
+.meter-gloed {
+  fill: none; stroke: var(--vul); stroke-linecap: round;
+  transition: stroke-dashoffset 0.9s cubic-bezier(0.22, 0.75, 0.2, 1), stroke 0.3s ease;
+}
+.meter-gloed--binnen { stroke-width: 12; opacity: 0.13; }
+.meter-gloed--buiten { stroke-width: 18; opacity: 0.05; }
+.meter--band .meter-gloed--binnen { stroke-width: 14; opacity: 0.12; }
+.meter--band .meter-gloed--buiten { stroke-width: 20; opacity: 0.045; }
+
+/* Het kopje op het einde van de boog, met een ring in de vlakkleur
+   zodat het los blijft van de baan eronder. */
+.meter-wijzer { transition: transform 0.9s cubic-bezier(0.22, 0.75, 0.2, 1); }
+.meter-punt {
+  fill: var(--vul); stroke: var(--meter-vlak); stroke-width: 1.8;
+  transition: fill 0.3s ease;
+}
+.meter--leeg .meter-punt,
+.meter--leeg .meter-gloed { opacity: 0; }
+
+/* De waarde staat in het midden als échte tekst; de SVG is decoratief. */
+.meter-midden {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 0.3rem;
+  /* Blijf binnen de vrije cirkel: de ring loopt tot ~36% vanaf het
+     midden, dus de tekst houdt daar afstand van. */
+  padding-inline: 14%;
+  pointer-events: none;
+  text-align: center;
+}
+.meter-waarde {
+  display: flex; align-items: baseline; justify-content: center;
+  line-height: 0.95;
+  /* Grote losse getallen: gewone proportionele cijfers, geen tabular-nums. */
+  font-variant-numeric: normal;
+  letter-spacing: -0.03em;
+  color: var(--tekst);
+  font-weight: 700;
+}
+.meter-eenheid {
+  font-size: 0.34em; font-weight: 700; color: var(--tekst-zacht);
+  margin-left: 0.3em; letter-spacing: 0; white-space: nowrap;
+}
+.meter--meting .meter-eenheid { font-size: 0.4em; }
+/* Op de kleine bandmeters past de eenheid niet naast het getal:
+   hij gaat eronder, zodat het getal zelf groot genoeg blijft. */
+.meter--band .meter-midden { padding-inline: 19%; }
+.meter--band .meter-waarde { flex-direction: column; align-items: center; line-height: 1.05; }
+.meter--band .meter-eenheid { font-size: 0.5em; margin-left: 0; }
+
+/* Het heldengetal van dit scherm: het accupercentage. Minstens 48px,
+   dezelfde schreefloze letter als de rest. Precies één per scherm. */
+.meter--hoofd .meter-waarde { font-size: clamp(3rem, 21vw, 4.5rem); font-weight: 800; }
+.meter--meting .meter-waarde { font-size: clamp(1.6rem, 9vw, 2.4rem); }
+.meter--band .meter-waarde   { font-size: clamp(0.95rem, 4.5vw, 1.35rem); }
+@supports (container-type: inline-size) {
+  .meter--hoofd .meter-waarde  { font-size: clamp(3rem, 26cqi, 4.5rem); }
+  .meter--meting .meter-waarde { font-size: clamp(1.5rem, 22cqi, 2.4rem); }
+  .meter--band .meter-waarde   { font-size: clamp(0.95rem, 21cqi, 1.35rem); }
+}
+
+/* Toestand in het midden: een pictogram én een woord. Kleur is hier
+   nooit de enige drager — de tekst zegt het ook. */
+.meter-staat {
+  display: inline-flex; align-items: center; gap: 0.32rem;
+  font-size: 0.72rem; font-weight: 700;
+  letter-spacing: 0.02em; line-height: 1.2;
+  padding: 0.18rem 0.5rem; border-radius: 999px;
+  border: 1px solid var(--vul);
+  background: var(--baan);
+  color: var(--tekst);
+  max-width: 100%;
+}
+/* Het pictogram staat op een gekleurd vlak; daar draagt het lichte inkt,
+   want de statuskleur zelf haalt op dat vlak geen 4,5:1. De rand van de
+   pil en de boog dragen de kleur. */
+.meter-staat-teken { color: var(--tekst); font-size: 0.95em; flex: none; }
+.meter--band .meter-staat { display: none; }   /* de band zegt het zelf onder de meter */
 
 /* ── Accu ──────────────────────────────────────────────────── */
-.accu-hoofd {
-  display: flex; align-items: baseline; justify-content: space-between;
-  gap: 0.5rem; flex-wrap: wrap;
-}
-.soc { display: flex; align-items: baseline; line-height: 0.9; }
-.soc-getal {
-  font-size: clamp(4rem, 24vw, 6rem);
-  font-weight: 800; letter-spacing: -0.04em;
-  font-variant-numeric: tabular-nums;
-}
-.soc-teken { font-size: clamp(1.5rem, 7vw, 2.1rem); font-weight: 700; color: var(--tekst-zacht); margin-left: 0.1em; }
-.soc--laag .soc-getal { color: var(--alarm); }
-.soc--midden .soc-getal { color: var(--waarschuwing); }
-.soc--onbekend .soc-getal { color: var(--tekst-gedempt); }
+.kaart--accu .meter--hoofd { margin-block: 0.25rem 1rem; }
 
-.accu-naast { text-align: right; padding-bottom: 0.35rem; }
-.bereik { line-height: 1.1; }
-.bereik-getal {
-  font-size: clamp(1.8rem, 9vw, 2.4rem); font-weight: 700;
-  font-variant-numeric: tabular-nums;
+.feiten {
+  display: flex; flex-wrap: wrap; gap: 0.5rem;
+  margin-bottom: 0.9rem;
 }
-.bereik-eenheid { font-size: 1.1rem; font-weight: 600; color: var(--tekst-zacht); }
-.bereik-label { font-size: 0.78rem; color: var(--tekst-gedempt); text-transform: uppercase; letter-spacing: 0.1em; }
+.feit {
+  flex: 1 1 8rem; min-width: 0;
+  border: 1px solid var(--rand); border-radius: 12px;
+  background: var(--vlak-hoog);
+  padding: 0.55rem 0.7rem 0.6rem;
+}
+.feit-label {
+  display: flex; align-items: center; gap: 0.35rem;
+  font-size: 0.68rem; font-weight: 800; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--tekst-gedempt);
+}
+.feit-waarde {
+  font-size: clamp(1.4rem, 7vw, 1.75rem); font-weight: 700;
+  line-height: 1.15; letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+.feit-waarde--klein { font-size: clamp(1.05rem, 5vw, 1.3rem); }
+.feit-eenheid { font-size: 0.6em; font-weight: 600; color: var(--tekst-zacht); }
 
-.accu-balk {
-  height: 16px; border-radius: 999px; overflow: hidden;
-  background: var(--vlak-hoog); border: 1px solid var(--rand);
-  margin: 0.9rem 0 0.9rem;
+.laadtijd-punt {
+  width: 9px; height: 9px; border-radius: 50%; flex: none;
+  background: var(--goed); animation: knipper 1.6s ease-in-out infinite;
 }
-.accu-balk-vul {
-  display: block; height: 100%; width: 0%;
-  background: var(--accent); border-radius: 999px;
-  transition: width 0.4s ease;
-}
-.accu-balk-vul.laag { background: var(--alarm); }
-.accu-balk-vul.midden { background: var(--waarschuwing); }
 
 .chips { list-style: none; display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 1.1rem; }
 .chip {
@@ -270,14 +488,13 @@ body {
   padding: 0.45rem 0.7rem; border-radius: 999px;
   border: 1px solid var(--rand); background: var(--vlak-hoog); color: var(--tekst-zacht);
 }
-.chip--aan { background: var(--accent-donker); border-color: var(--accent); color: var(--accent); }
-.chip--koel { background: rgba(111, 182, 255, 0.12); border-color: var(--koel); color: var(--koel); }
-.chip--let-op { background: var(--waarschuwing-donker); border-color: var(--waarschuwing); color: var(--waarschuwing); }
+.chip--aan { background: var(--goed-baan); border-color: var(--goed); color: #D6F5D6; }
+.chip--let-op { background: var(--let-op-baan); border-color: var(--let-op); color: #FFEBC4; }
 .chip--stil { color: var(--tekst-gedempt); }
 
 .chip--laadt::before {
   content: ""; display: inline-block; width: 9px; height: 9px;
-  border-radius: 50%; background: currentColor; margin-right: 0.45rem;
+  border-radius: 50%; background: var(--goed); margin-right: 0.45rem;
   animation: knipper 1.6s ease-in-out infinite;
 }
 @keyframes knipper { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
@@ -299,27 +516,27 @@ body {
 
 /* ── Klimaat ───────────────────────────────────────────────── */
 .klimaat-status {
-  font-weight: 700; font-size: 1rem;
+  font-weight: 700; font-size: 0.98rem;
   padding: 0.7rem 0.85rem; border-radius: 12px;
   border: 1px solid var(--rand); background: var(--vlak-hoog);
   color: var(--tekst-zacht); margin-bottom: 1rem;
 }
-.klimaat-status--aan { color: var(--koel); border-color: var(--koel); background: rgba(111, 182, 255, 0.12); }
+.klimaat-status--aan { color: #DDEDFF; border-color: var(--koel); background: var(--koel-baan); }
 
 .temp-regel {
   display: flex; align-items: center; justify-content: space-between;
   gap: 0.5rem;
 }
 .knop--stap {
-  width: 64px; height: 64px; flex: none;
-  font-size: 2rem; font-weight: 700; line-height: 1;
+  width: 60px; height: 60px; flex: none;
+  font-size: 1.9rem; font-weight: 700; line-height: 1;
   border-radius: 50%; border: 1px solid var(--rand); background: var(--vlak-hoog);
   padding: 0;
 }
+/* De instelling blijft duidelijk kleiner dan het heldengetal. */
 .temp-waarde {
-  font-size: clamp(2.6rem, 15vw, 3.4rem); font-weight: 800;
-  letter-spacing: -0.03em; font-variant-numeric: tabular-nums;
-  line-height: 1;
+  font-size: clamp(2rem, 9vw, 2.5rem); font-weight: 800;
+  letter-spacing: -0.03em; line-height: 1;
 }
 .temp-eenheid { font-size: 0.45em; font-weight: 700; color: var(--tekst-zacht); margin-left: 0.15em; }
 
@@ -362,7 +579,7 @@ body {
   border: 1px solid var(--rand); background: var(--vlak-hoog);
   color: var(--tekst-zacht); margin-bottom: 0.85rem;
 }
-.kaart-status--fout { border-color: var(--alarm); background: var(--alarm-donker); color: #FFD9D5; }
+.kaart-status--fout { border-color: var(--kritiek); background: var(--kritiek-baan); color: #FFE0DD; }
 
 /* Badge die zegt wélk soort getal je ziet: een meting of een instelling. */
 .merk {
@@ -373,45 +590,21 @@ body {
 .merk--meting { color: var(--koel); }
 .merk--instelling { color: var(--accent); }
 
-/* ── Accu: resterende laadtijd ─────────────────────────────── */
-.laadtijd {
-  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
-  padding: 0.7rem 0.85rem; border-radius: 12px;
-  border: 1px solid var(--accent); background: var(--accent-donker);
-  color: var(--accent); margin-bottom: 0.9rem;
-}
-.laadtijd-punt {
-  width: 10px; height: 10px; border-radius: 50%; flex: none;
-  background: currentColor; animation: knipper 1.6s ease-in-out infinite;
-}
-.laadtijd-label {
-  font-size: 0.72rem; font-weight: 800; letter-spacing: 0.12em;
-  text-transform: uppercase; opacity: 0.85;
-}
-.laadtijd-waarde {
-  margin-left: auto; font-size: 1.15rem; font-weight: 800;
-  font-variant-numeric: tabular-nums; color: var(--tekst);
-}
-
 /* ── Klimaat: gemeten binnentemperatuur (géén instelling) ──── */
 .meting {
   border: 2px dashed rgba(111, 182, 255, 0.55);
   border-radius: 14px;
-  background: rgba(111, 182, 255, 0.08);
+  background: rgba(111, 182, 255, 0.06);
   padding: 0.8rem 0.85rem 0.75rem;
   margin-bottom: 0.9rem;
+  --meter-vlak: #18212B;   /* de doorschijnende blauwe laag over --vlak, uitgerekend */
 }
 .meting-kop {
   display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
   font-size: 0.82rem; font-weight: 700; color: var(--tekst-zacht);
   margin-bottom: 0.35rem;
 }
-.meting-waarde {
-  font-size: 2rem; font-weight: 700; line-height: 1.1;
-  font-variant-numeric: tabular-nums; color: var(--koel);
-}
-.meting-eenheid { font-size: 0.55em; font-weight: 700; }
-.meting-noot { font-size: 0.78rem; color: var(--tekst-gedempt); margin-top: 0.25rem; }
+.meting-noot { font-size: 0.78rem; color: var(--tekst-gedempt); margin-top: 0.35rem; text-align: center; }
 
 .instelgroep-kop {
   display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
@@ -419,29 +612,29 @@ body {
   margin-bottom: 0.6rem;
 }
 
-/* ── Bandenspanning: de auto van bovenaf ───────────────────── */
+/* ── Bandenspanning: de auto van bovenaf, vier kleine meters ─ */
 .banden {
   display: grid;
-  grid-template-columns: 1fr minmax(58px, 78px) 1fr;
+  grid-template-columns: 1fr minmax(52px, 86px) 1fr;
   grid-template-rows: auto auto auto;
   grid-template-areas:
     "voor voor voor"
     "lv   auto  rv"
     "la   auto  ra";
-  gap: 0.5rem;
+  gap: 0.5rem 0.35rem;
   align-items: center;
 }
 .banden-auto {
   grid-area: auto;
   width: 100%; height: 100%;
-  max-height: 200px; min-height: 130px;
+  max-height: 210px; min-height: 120px;
   justify-self: center;
 }
 .auto-vorm { fill: var(--vlak-hoog); stroke: var(--rand); stroke-width: 2; }
 .auto-ruit { fill: var(--rand); opacity: 0.7; }
-.auto-wiel { fill: var(--tekst-gedempt); }
-.auto-wiel.let-op { fill: var(--alarm); }
-.auto-wiel.onbekend { fill: var(--rand); }
+.auto-wiel { fill: var(--goed); }
+.auto-wiel.let-op { fill: var(--kritiek); }
+.auto-wiel.onbekend { fill: var(--tekst-gedempt); }
 .banden-voor {
   grid-area: voor; justify-self: center;
   display: flex; align-items: center; gap: 0.3rem;
@@ -453,52 +646,50 @@ body {
 
 .band {
   border: 1px solid var(--rand); border-radius: 14px;
-  background: var(--vlak-hoog); padding: 0.6rem 0.55rem;
-  min-height: 84px;
-  display: flex; flex-direction: column; justify-content: center;
+  background: var(--vlak-hoog); padding: 0.55rem 0.4rem 0.6rem;
+  display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+  min-width: 0;
+  --meter-vlak: var(--vlak-hoog);
 }
 .band--lv { grid-area: lv; }
-.band--rv { grid-area: rv; text-align: right; }
+.band--rv { grid-area: rv; }
 .band--la { grid-area: la; }
-.band--ra { grid-area: ra; text-align: right; }
+.band--ra { grid-area: ra; }
 
 .band-plek {
-  font-size: 0.68rem; font-weight: 800; letter-spacing: 0.08em;
+  font-size: 0.66rem; font-weight: 800; letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--tekst-gedempt);
+  text-align: center; line-height: 1.2;
 }
-.band-waarde { line-height: 1.15; margin: 0.15rem 0 0.1rem; }
-.band-getal {
-  font-size: 1.5rem; font-weight: 800;
-  font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+.band-staat {
+  display: flex; align-items: center; justify-content: center; gap: 0.25rem;
+  font-size: 0.72rem; color: var(--tekst-zacht); text-align: center;
+  line-height: 1.2; min-width: 0;
 }
-.band-eenheid { font-size: 0.85rem; font-weight: 600; color: var(--tekst-zacht); }
-.band-staat { font-size: 0.72rem; color: var(--tekst-zacht); }
+.band-teken { flex: none; font-weight: 800; }
 
-.band--let-op {
-  border-color: var(--alarm); border-width: 2px;
-  background: var(--alarm-donker);
-  animation: pulseRand 2.4s ease-in-out infinite;
-}
-.band--let-op .band-getal,
-.band--let-op .band-staat,
-.band--let-op .band-plek { color: var(--alarm); }
-.band--let-op .band-staat { font-weight: 800; }
-.band--onbekend .band-getal { color: var(--tekst-gedempt); }
+/* Zonder kleur nog steeds herkenbaar: dikkere rand, pictogram en woord. */
+.band--let-op { border-color: var(--kritiek); border-width: 2px; background: var(--kritiek-baan); }
+.band--let-op .band-staat { color: #FFE0DD; font-weight: 800; }
+.band--let-op .band-teken { color: inherit; }   /* lichte inkt op het rode vlak */
+.band--let-op { --meter-vlak: var(--kritiek-baan); }
+.band--onbekend .band-teken { color: var(--tekst-gedempt); }
+.band--in-orde .band-teken { color: var(--goed); }
 
 .banden-alarm {
   display: flex; gap: 0.5rem; align-items: flex-start;
-  border: 1px solid var(--alarm); background: var(--alarm-donker);
-  color: #FFD9D5; border-radius: 12px; padding: 0.7rem 0.85rem;
+  border: 1px solid var(--kritiek); background: var(--kritiek-baan);
+  color: #FFE0DD; border-radius: 12px; padding: 0.7rem 0.85rem;
   font-weight: 700; font-size: 0.95rem; margin-bottom: 0.9rem;
 }
 
 /* ── Kilometerstand ────────────────────────────────────────── */
-.km-waarde { line-height: 1.05; }
+.km-waarde { line-height: 1.05; display: flex; align-items: baseline; flex-wrap: wrap; }
 .km-getal {
-  font-size: clamp(2.2rem, 13vw, 3rem); font-weight: 800;
-  letter-spacing: -0.03em; font-variant-numeric: tabular-nums;
+  font-size: clamp(1.9rem, 9vw, 2.4rem); font-weight: 800;
+  letter-spacing: -0.03em;
 }
-.km-eenheid { font-size: 1.1rem; font-weight: 700; color: var(--tekst-zacht); }
+.km-eenheid { font-size: 1.05rem; font-weight: 700; color: var(--tekst-zacht); }
 
 /* ── Locatie ───────────────────────────────────────────────── */
 .locatie {
@@ -506,26 +697,24 @@ body {
   flex-wrap: wrap;
 }
 .kompas { width: 96px; height: 96px; flex: none; }
-.kompas-ring { fill: var(--vlak-hoog); stroke: var(--rand); stroke-width: 2; }
-.kompas-ring--binnen { fill: none; stroke-dasharray: 3 5; opacity: 0.8; }
-.kompas-tik line { stroke: var(--tekst-gedempt); stroke-width: 2.5; }
+.kompas-buitenring { fill: none; stroke: var(--rand); stroke-width: 0.5; opacity: 0.75; }
+.kompas-ring { fill: var(--vlak-hoog); stroke: var(--rand); stroke-width: 1.5; }
+.kompas-ring--binnen { fill: none; stroke-dasharray: 2 4; opacity: 0.7; }
+.kompas-tik line { stroke: var(--tekst-gedempt); stroke-width: 2; }
 .kompas-letter text {
   fill: var(--tekst-gedempt); font-size: 13px; font-weight: 700;
   font-family: inherit;
 }
-.kompas-naald { fill: var(--accent); }
+.kompas-naald { fill: var(--koel); }
 .kompas-as { fill: var(--tekst); }
 #kompas-naald { transition: transform 0.5s ease; }
 
-.locatie-tekst { min-width: 9rem; flex: 1 1 9rem; }
-.richting { font-size: 1.25rem; font-weight: 800; line-height: 1.2; }
-.richting-graden {
-  font-size: 0.95rem; font-weight: 600; color: var(--tekst-zacht);
-  font-variant-numeric: tabular-nums;
-}
+.locatie-tekst { min-width: 8rem; flex: 1 1 8rem; }
+.richting { font-size: 1.15rem; font-weight: 800; line-height: 1.25; }
+.richting-graden { font-size: 0.95rem; font-weight: 600; color: var(--tekst-zacht); }
 .coord {
-  font-size: 0.92rem; color: var(--tekst-zacht); margin-top: 0.35rem;
-  font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+  font-size: 0.9rem; color: var(--tekst-zacht); margin-top: 0.35rem;
+  overflow-wrap: anywhere;
 }
 .locatie + .knop, #kaart-link { margin-top: 0.9rem; }
 
@@ -535,39 +724,45 @@ body {
   padding: 1.25rem 0.5rem 0.5rem;
 }
 
-/* ── Smalle telefoons (tot 320px) ──────────────────────────── */
-@media (max-width: 360px) {
-  .app { padding-inline: 0.6rem; }
-  .kaart { padding: 0.9rem 0.75rem 1.1rem; }
-  .knop--stap { width: 56px; height: 56px; font-size: 1.75rem; }
-  .accu-naast { padding-bottom: 0.6rem; }
-  .leeftijd { font-size: 0.92rem; }
+/* ── Smalle telefoons (tot 360px, dus ook 320px) ───────────── */
+@media (max-width: 22.5rem) {
+  .app { padding-inline: 0.55rem; }
+  .kaart { padding: 0.9rem 0.7rem 1.1rem; }
+  .knop--stap { width: 54px; height: 54px; font-size: 1.7rem; }
+  .leeftijd { font-size: 0.88rem; }
 
-  /* Banden: de auto wordt smaller zodat de vier waarden heel blijven. */
-  .banden { grid-template-columns: 1fr 50px 1fr; gap: 0.4rem 0.3rem; }
-  .banden-auto { min-height: 112px; }
-  .band { padding: 0.5rem 0.45rem; min-height: 78px; }
-  .band-getal { font-size: 1.3rem; }
-  .band-plek { font-size: 0.62rem; letter-spacing: 0.04em; }
-  .band-staat { font-size: 0.68rem; }
+  .meter--hoofd { max-width: 15rem; }
+  .meter--meting { max-width: 11.5rem; }
+  .meter--band { max-width: 5rem; }
 
-  .kompas { width: 78px; height: 78px; }
+  /* Banden: de auto wordt smaller zodat de vier meters heel blijven. */
+  .banden { grid-template-columns: 1fr 46px 1fr; gap: 0.4rem 0.25rem; }
+  .banden-auto { min-height: 104px; }
+  .band { padding: 0.45rem 0.3rem 0.5rem; }
+  .band-plek { font-size: 0.6rem; letter-spacing: 0.02em; }
+  .band-staat { font-size: 0.66rem; }
+
+  .kompas { width: 76px; height: 76px; }
   .locatie { gap: 0.7rem; }
-  .locatie-tekst { flex-basis: 7.5rem; min-width: 7.5rem; }
-  .richting { font-size: 1.1rem; }
-  .coord { font-size: 0.85rem; }
-  .laadtijd-waarde { font-size: 1.05rem; }
+  .locatie-tekst { flex-basis: 7rem; min-width: 7rem; }
+  .richting { font-size: 1.05rem; }
+  .coord { font-size: 0.84rem; }
+  .feit { flex-basis: 7rem; padding: 0.5rem 0.55rem 0.55rem; }
 }
 
-/* ── Licht systeemthema: iets zachter, blijft donker ───────── */
+/* ── Meer contrast gevraagd ────────────────────────────────── */
 @media (prefers-contrast: more) {
   :root { --rand: #5A6B78; --tekst-zacht: #D3DDE5; --tekst-gedempt: #B0BDC7; }
+  .meter-tik { stroke: #8FA0AC; }
 }
 
+/* ── Rust gevraagd: geen tellende cijfers, geen bewegende ringen.
+      app.js zet de eindwaarde meteen; hier staat de rest stil. ── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

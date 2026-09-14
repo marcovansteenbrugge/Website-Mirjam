@@ -13,11 +13,27 @@
   const VERS_MIN = 10;           // < 10 min = vers
   const OUD_MIN = 60;            // >= 60 min = ronduit verouderd
 
+  /* Bereiken van de meters. De binnentemperatuur en de bandenspanning
+     hebben geen natuurlijk nulpunt; deze vensters zijn gekozen zodat de
+     waarden die een personenauto werkelijk geeft in het leesbare deel
+     van de boog vallen. */
+  const BINNEN_MIN = -10, BINNEN_MAX = 40;   // °C in de cabine
+  const BAND_MIN = 1.0, BAND_MAX = 3.0;      // bar
+
   /* ── Kleine hulpjes ──────────────────────────────────────── */
   const el = (id) => document.getElementById(id);
   const wacht = (ms) => new Promise((r) => setTimeout(r, ms));
   const getal = (n, cijfers = 0) =>
     n.toLocaleString('nl-NL', { minimumFractionDigits: cijfers, maximumFractionDigits: cijfers });
+  const isNum = (n) => typeof n === 'number' && isFinite(n);
+  const klem = (n, laag, hoog) => Math.max(laag, Math.min(hoog, n));
+
+  /* Wie om rust vraagt, krijgt rust: geen tellende cijfers, geen
+     bewegende ringen — meteen de eindwaarde. */
+  const rustig = () => {
+    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+    catch { return false; }
+  };
 
   /* ── Opslag (privémodus kan localStorage blokkeren) ──────── */
   const opslag = (() => {
@@ -155,6 +171,237 @@
     return new ApiFout(code, e && e.message, e && e.retryable, 0);
   }
 
+  /* ══════════════════════════════════════════════════════════
+     De radiale meter — één component voor alle zes de meters
+
+     Geparametriseerd op bereik, eenheid, aantal streepjes en ernst.
+     De SVG is decoratief (aria-hidden); de waarde staat als échte
+     tekst in het midden, zodat een schermlezer hem gewoon voorleest.
+     ══════════════════════════════════════════════════════════ */
+
+  /* Statuskleuren zijn gereserveerd en vast (zie style.css). De
+     onopgevulde baan is telkens dezelfde kleur, één stap richting het
+     kaartvlak — nooit grijs, zodat de toestand over de hele ring leest.
+     "meting" is geen toestand maar een aflezing: koel blauw, en zonder
+     statuswoord, want er valt niets te beoordelen. */
+  const ERNST = {
+    goed:     { vul: 'var(--goed)',    baan: 'var(--goed-baan)',    teken: '✓' },
+    'let-op': { vul: 'var(--let-op)',  baan: 'var(--let-op-baan)',  teken: '!' },
+    ernstig:  { vul: 'var(--ernstig)', baan: 'var(--ernstig-baan)', teken: '!' },
+    kritiek:  { vul: 'var(--kritiek)', baan: 'var(--kritiek-baan)', teken: '⚠' },
+    meting:   { vul: 'var(--koel)',    baan: 'var(--koel-baan)',    teken: '○' },
+    onbekend: { vul: 'var(--tekst-gedempt)', baan: 'var(--rand)',   teken: '?' }
+  };
+
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const BOOG_START = 225;   // graden, met de klok mee vanaf 12 uur: linksonder
+  const BOOG_SWEEP = 270;   // opening van 90° recht onderaan
+  const BOOG_R = 40;
+  const BOOG_LENGTE = (BOOG_SWEEP / 360) * 2 * Math.PI * BOOG_R;
+
+  function svgEl(naam, kenmerken) {
+    const e = document.createElementNS(SVG_NS, naam);
+    Object.keys(kenmerken).forEach((k) => e.setAttribute(k, kenmerken[k]));
+    return e;
+  }
+
+  /* Punt op de cirkel; hoek in graden, met de klok mee vanaf 12 uur. */
+  function boogPunt(hoek, straal) {
+    const r = (hoek * Math.PI) / 180;
+    return [50 + straal * Math.sin(r), 50 - straal * Math.cos(r)];
+  }
+
+  /* Cijfers die bij het laden één keer naar hun waarde tellen.
+     Daarna — bij een verversing — springt de waarde er meteen heen:
+     tellen is een begroeting, geen tic. */
+  const alGeteld = new Set();
+  function zetGetal(node, waarde, opmaak, sleutel) {
+    if (waarde === null) { node.textContent = '–'; return; }
+    if (!sleutel || alGeteld.has(sleutel) || rustig()) {
+      node.textContent = opmaak(waarde);
+      if (sleutel) alGeteld.add(sleutel);
+      return;
+    }
+    alGeteld.add(sleutel);
+    const duur = 900;
+    const begin = performance.now();
+    const stap = (nu) => {
+      const t = Math.min(1, (nu - begin) / duur);
+      const e = 1 - Math.pow(1 - t, 3);           // rustig uitlopend
+      node.textContent = opmaak(waarde * e);
+      if (t < 1) requestAnimationFrame(stap);
+      else node.textContent = opmaak(waarde);
+    };
+    requestAnimationFrame(stap);
+  }
+
+  /**
+   * Bouwt één radiale meter in `opt.houder`.
+   *
+   * opt.min, opt.max   bereik van de boog
+   * opt.eenheid        tekst achter het getal ('%', '°C', 'bar', …)
+   * opt.cijfers        aantal decimalen
+   * opt.tikken         aantal segmenten tussen de schaalstreepjes
+   * opt.grofElke       elk hoeveelste streepje een grove is
+   * opt.telSleutel     sleutel voor het eenmalige optellen (weglaten = niet tellen)
+   * opt.label          korte zin die een schermlezer vóór de waarde hoort
+   *
+   * Geeft terug: { zet({ waarde, ernst, woord }) }
+   */
+  function maakMeter(opt) {
+    const houder = opt.houder;
+    const min = opt.min, max = opt.max;
+    const cijfers = opt.cijfers || 0;
+    const tikken = opt.tikken || 40;
+    const grofElke = opt.grofElke || 10;
+
+    const svg = svgEl('svg', {
+      viewBox: '0 0 100 100', class: 'meter-svg',
+      'aria-hidden': 'true', focusable: 'false'
+    });
+
+    /* Dunne buitenring. */
+    svg.append(svgEl('circle', { class: 'meter-ring', cx: 50, cy: 50, r: 47 }));
+
+    /* Fijne schaalstreepjes — terughoudend; de waarde is de hoofdpersoon. */
+    const tikGroep = svgEl('g', { class: 'meter-tikken' });
+    for (let i = 0; i <= tikken; i++) {
+      const grof = i % grofElke === 0;
+      const hoek = BOOG_START + (i / tikken) * BOOG_SWEEP;
+      const [x1, y1] = boogPunt(hoek, grof ? 43.0 : 44.5);
+      const [x2, y2] = boogPunt(hoek, 46.4);
+      tikGroep.append(svgEl('line', {
+        class: 'meter-tik' + (grof ? ' meter-tik--grof' : ''),
+        x1: x1.toFixed(2), y1: y1.toFixed(2), x2: x2.toFixed(2), y2: y2.toFixed(2)
+      }));
+    }
+    svg.append(tikGroep);
+
+    const [ax, ay] = boogPunt(BOOG_START, BOOG_R);
+    const [bx, by] = boogPunt(BOOG_START + BOOG_SWEEP, BOOG_R);
+    const d = 'M ' + ax.toFixed(3) + ' ' + ay.toFixed(3) +
+              ' A ' + BOOG_R + ' ' + BOOG_R + ' 0 1 1 ' + bx.toFixed(3) + ' ' + by.toFixed(3);
+
+    svg.append(svgEl('path', { class: 'meter-baan', d, 'stroke-dasharray': 'none' }));
+
+    const L = BOOG_LENGTE.toFixed(3);
+    const bogen = [
+      svgEl('path', { class: 'meter-gloed meter-gloed--buiten', d }),
+      svgEl('path', { class: 'meter-gloed meter-gloed--binnen', d }),
+      svgEl('path', { class: 'meter-vul', d })
+    ];
+    bogen.forEach((p) => {
+      p.setAttribute('stroke-dasharray', L + ' ' + L);
+      p.setAttribute('stroke-dashoffset', L);
+      svg.append(p);
+    });
+
+    /* Het kopje op het einde van de boog draait mee met de waarde. */
+    const wijzer = svgEl('g', { class: 'meter-wijzer', transform: 'rotate(0 50 50)' });
+    wijzer.append(svgEl('circle', {
+      class: 'meter-punt', cx: ax.toFixed(3), cy: ay.toFixed(3), r: opt.klein ? 2.8 : 3.2
+    }));
+    svg.append(wijzer);
+
+    /* Het label komt vóór de SVG te staan, zodat een schermlezer eerst
+       hoort wát hij leest en daarna de waarde. */
+    const zin = document.createElement('p');
+    zin.className = 'visueel-verborgen';
+    zin.textContent = opt.label || '';
+
+    const midden = document.createElement('div');
+    midden.className = 'meter-midden';
+
+    const waardeRegel = document.createElement('p');
+    waardeRegel.className = 'meter-waarde';
+    const getalSpan = document.createElement('span');
+    getalSpan.className = 'meter-getal';
+    getalSpan.textContent = '–';
+    waardeRegel.append(getalSpan);
+    if (opt.eenheid) {
+      const eenheidSpan = document.createElement('span');
+      eenheidSpan.className = 'meter-eenheid';
+      eenheidSpan.textContent = opt.eenheid;
+      waardeRegel.append(eenheidSpan);
+    }
+    midden.append(waardeRegel);
+
+    const staat = document.createElement('p');
+    staat.className = 'meter-staat';
+    staat.hidden = true;
+    const staatTeken = document.createElement('span');
+    staatTeken.className = 'meter-staat-teken';
+    staatTeken.setAttribute('aria-hidden', 'true');
+    const staatWoord = document.createElement('span');
+    staat.append(staatTeken, staatWoord);
+    midden.append(staat);
+
+    houder.replaceChildren(zin, svg, midden);
+    houder.classList.add('meter--leeg');
+
+    return {
+      zet(stand) {
+        const waarde = isNum(stand.waarde) ? stand.waarde : null;
+        const ernst = ERNST[stand.ernst] ? stand.ernst : 'onbekend';
+        const kleur = ERNST[ernst];
+
+        houder.style.setProperty('--vul', kleur.vul);
+        houder.style.setProperty('--baan', kleur.baan);
+        houder.classList.toggle('meter--leeg', waarde === null);
+
+        const deel = waarde === null ? 0 : klem((waarde - min) / (max - min), 0, 1);
+        bogen.forEach((p) => p.setAttribute('stroke-dashoffset', (BOOG_LENGTE * (1 - deel)).toFixed(3)));
+        wijzer.setAttribute('transform', 'rotate(' + (deel * BOOG_SWEEP).toFixed(2) + ' 50 50)');
+
+        zetGetal(getalSpan, waarde, (n) => getal(n, cijfers), opt.telSleutel);
+
+        if (stand.woord) {
+          staat.hidden = false;
+          staatTeken.textContent = kleur.teken;
+          staatWoord.textContent = stand.woord;
+        } else {
+          staat.hidden = true;
+        }
+      }
+    };
+  }
+
+  /* ── De zes meters ───────────────────────────────────────── */
+  const meterAccu = maakMeter({
+    houder: el('meter-accu'),
+    min: 0, max: 100, eenheid: '%', cijfers: 0,
+    tikken: 40, grofElke: 10,
+    telSleutel: 'accu',
+    label: 'Laadstand van de accu:'
+  });
+
+  const meterBinnen = maakMeter({
+    houder: el('meter-binnen'),
+    min: BINNEN_MIN, max: BINNEN_MAX, eenheid: '°C', cijfers: 1,
+    tikken: 30, grofElke: 6,
+    telSleutel: 'binnen',
+    label: 'Gemeten temperatuur in de auto:'
+  });
+
+  const WIELEN = [
+    ['front_left', 'Linksvoor'],
+    ['front_right', 'Rechtsvoor'],
+    ['rear_left', 'Linksachter'],
+    ['rear_right', 'Rechtsachter']
+  ];
+
+  const bandMeters = {};
+  WIELEN.forEach(([sleutel]) => {
+    bandMeters[sleutel] = maakMeter({
+      houder: el('meter-' + sleutel),
+      min: BAND_MIN, max: BAND_MAX, eenheid: 'bar', cijfers: 2,
+      tikken: 20, grofElke: 5, klein: true,
+      telSleutel: 'band-' + sleutel
+      // Geen eigen label: het bandkaartje eromheen noemt de plek al,
+      // zichtbaar én in zijn aria-label.
+    });
+  });
+
   /* ── Meldingen ───────────────────────────────────────────── */
   function meld(tekst, soort, detail) {
     const vak = el('melding');
@@ -191,7 +438,7 @@
 
   function zetLeeftijdBron(accu) {
     leeftijdGemetenOp = Date.now();
-    if (accu && typeof accu.stale_minutes === 'number' && isFinite(accu.stale_minutes)) {
+    if (accu && isNum(accu.stale_minutes)) {
       leeftijdBasisMs = Math.max(0, accu.stale_minutes) * 60000;
       return;
     }
@@ -257,6 +504,18 @@
   let mogelijk = Object.create(null);
   const kan = (naam) => mogelijk[naam] === true;
 
+  /* Blijft een hele kolom leeg, dan verdwijnt ook de kolom zelf en
+     krimpt het raster mee — geen lege baan naast de rest. */
+  function schikKolommen() {
+    const raster = el('raster');
+    [['accu', 'kolom-accu'], ['temp', 'kolom-temp'], ['overig', 'kolom-overig']]
+      .forEach(([naam, id]) => {
+        const kolom = el(id);
+        kolom.hidden = !kolom.querySelector('.kaart:not([hidden])');
+        raster.classList.toggle('zonder-' + naam, kolom.hidden);
+      });
+  }
+
   function pasMogelijkhedenToe(caps) {
     mogelijk = Object.create(null);
     if (caps && typeof caps === 'object') {
@@ -270,6 +529,7 @@
       if (aan) zichtbaar += 1;
     });
     el('niets-melding').hidden = zichtbaar > 0;
+    schikKolommen();
 
     const wel = [];
     const niet = [];
@@ -326,13 +586,6 @@
   }
 
   /* ── Bandenspanning tonen ────────────────────────────────── */
-  const WIELEN = [
-    ['front_left', 'Linksvoor'],
-    ['front_right', 'Rechtsvoor'],
-    ['rear_left', 'Linksachter'],
-    ['rear_right', 'Rechtsachter']
-  ];
-
   function toonBanden(banden) {
     const slecht = [];
     let onbekend = 0;
@@ -340,35 +593,39 @@
     WIELEN.forEach(([sleutel, plek]) => {
       const vak = el('band-' + sleutel);
       const wiel = banden && banden[sleutel];
-      const bar = wiel && typeof wiel.bar === 'number' && isFinite(wiel.bar) ? wiel.bar : null;
+      const bar = wiel && isNum(wiel.bar) ? wiel.bar : null;
       const inOrde = wiel ? wiel.ok : null;
 
-      const getalVak = vak.querySelector('.band-getal');
-      const eenheid = vak.querySelector('.band-eenheid');
-      const staat = vak.querySelector('.band-staat');
-
-      // twee decimalen, met de Nederlandse komma
-      getalVak.textContent = bar === null ? '–' : getal(bar, 2);
-      eenheid.hidden = bar === null;
+      const teken = vak.querySelector('.band-teken');
+      const woord = vak.querySelector('.band-woord');
 
       // Ook het wiel in de tekening kleurt mee, zodat de plek klopt met het getal.
       const wielVorm = el('wiel-' + sleutel);
 
+      let ernst;
       if (inOrde === false) {
+        ernst = 'kritiek';
         vak.className = 'band band--' + plekKlasse(sleutel) + ' band--let-op';
-        staat.textContent = 'CONTROLEREN';
+        teken.textContent = '⚠';          // pictogram, náást het woord
+        woord.textContent = 'CONTROLEREN';
         if (wielVorm) wielVorm.setAttribute('class', 'auto-wiel let-op');
         slecht.push(plek.toLowerCase());
       } else if (inOrde === true) {
-        vak.className = 'band band--' + plekKlasse(sleutel);
-        staat.textContent = 'in orde';
+        ernst = 'goed';
+        vak.className = 'band band--' + plekKlasse(sleutel) + ' band--in-orde';
+        teken.textContent = '✓';
+        woord.textContent = 'in orde';
         if (wielVorm) wielVorm.setAttribute('class', 'auto-wiel');
       } else {
+        ernst = 'onbekend';
         vak.className = 'band band--' + plekKlasse(sleutel) + ' band--onbekend';
-        staat.textContent = bar === null ? 'niet doorgegeven' : 'staat onbekend';
+        teken.textContent = '?';
+        woord.textContent = bar === null ? 'niet doorgegeven' : 'staat onbekend';
         if (wielVorm) wielVorm.setAttribute('class', 'auto-wiel onbekend');
         onbekend += 1;
       }
+
+      bandMeters[sleutel].zet({ waarde: bar, ernst });
 
       // Eén zin per wiel voor de schermlezer; los van de ruimtelijke opmaak.
       vak.setAttribute('aria-label',
@@ -400,9 +657,8 @@
 
   /* ── Kilometerstand tonen ────────────────────────────────── */
   function toonKilometerstand(stand) {
-    const km = stand && typeof stand.total_km === 'number' && isFinite(stand.total_km)
-      ? stand.total_km : null;
-    el('km-getal').textContent = km === null ? '–' : getal(Math.round(km));  // 21.126
+    const km = stand && isNum(stand.total_km) ? stand.total_km : null;
+    zetGetal(el('km-getal'), km, (n) => getal(Math.round(n)), 'km');   // 21.126
     el('km-eenheid').hidden = km === null;
 
     const gemeten = leeftijdVan(stand);
@@ -415,10 +671,9 @@
   let laatsteLocatie = null;
 
   function toonLocatie(plek) {
-    const lat = plek && typeof plek.latitude === 'number' && isFinite(plek.latitude) ? plek.latitude : null;
-    const lon = plek && typeof plek.longitude === 'number' && isFinite(plek.longitude) ? plek.longitude : null;
-    const kop = plek && typeof plek.heading_degrees === 'number' && isFinite(plek.heading_degrees)
-      ? plek.heading_degrees : null;
+    const lat = plek && isNum(plek.latitude) ? plek.latitude : null;
+    const lon = plek && isNum(plek.longitude) ? plek.longitude : null;
+    const kop = plek && isNum(plek.heading_degrees) ? plek.heading_degrees : null;
 
     laatsteLocatie = (lat !== null && lon !== null) ? { lat, lon } : null;
 
@@ -467,7 +722,7 @@
 
   /* Leeftijd (in ms) uit stale_minutes of updated_at; null als onbekend. */
   function leeftijdVan(data) {
-    if (data && typeof data.stale_minutes === 'number' && isFinite(data.stale_minutes)) {
+    if (data && isNum(data.stale_minutes)) {
       return Math.max(0, data.stale_minutes) * 60000;
     }
     const t = data && data.updated_at ? Date.parse(data.updated_at) : NaN;
@@ -475,31 +730,24 @@
   }
 
   /* ── Accu tonen ──────────────────────────────────────────── */
+  /* Vier stappen, met bij elke stap een woord — kleur staat er nooit alleen voor. */
+  function accuErnst(soc) {
+    if (soc === null) return { ernst: 'onbekend', woord: 'stand onbekend' };
+    if (soc <= 10) return { ernst: 'kritiek', woord: 'bijna leeg' };
+    if (soc <= 20) return { ernst: 'ernstig', woord: 'laag' };
+    if (soc <= 35) return { ernst: 'let-op', woord: 'raakt leeg' };
+    return { ernst: 'goed', woord: 'ruim voldoende' };
+  }
+
   function toonAccu(accu) {
-    const soc = typeof accu.soc_percent === 'number' ? accu.soc_percent : null;
-    const socVak = el('soc');
-    const socGetal = el('soc-getal');
-    const vul = el('accu-balk-vul');
+    const soc = isNum(accu.soc_percent) ? klem(accu.soc_percent, 0, 100) : null;
+    const staat = accuErnst(soc);
+    meterAccu.zet({ waarde: soc, ernst: staat.ernst, woord: staat.woord });
 
-    if (soc === null) {
-      socGetal.textContent = '–';
-      socVak.className = 'soc soc--onbekend';
-      vul.style.width = '0%';
-      vul.className = 'accu-balk-vul';
-      el('accu-balk-label').textContent = 'Laadstatus onbekend';
-    } else {
-      const begrensd = Math.max(0, Math.min(100, soc));
-      socGetal.textContent = getal(Math.round(soc));   // hele procenten: leest sneller in het donker
-      socVak.className = 'soc' + (begrensd <= 15 ? ' soc--laag' : begrensd <= 35 ? ' soc--midden' : '');
-      vul.style.width = begrensd + '%';
-      vul.className = 'accu-balk-vul' + (begrensd <= 15 ? ' laag' : begrensd <= 35 ? ' midden' : '');
-      el('accu-balk-label').textContent = 'Accu ' + getal(begrensd) + ' procent vol';
-    }
-
-    const bereikBekend = typeof accu.range_km === 'number';
-    el('bereik-getal').textContent = bereikBekend ? getal(Math.round(accu.range_km)) : '–';
+    const bereikBekend = isNum(accu.range_km);
+    zetGetal(el('bereik-getal'), bereikBekend ? accu.range_km : null, (n) => getal(Math.round(n)), 'bereik');
     el('bereik-eenheid').hidden = !bereikBekend;
-    el('bereik-label').textContent = bereikBekend ? 'actieradius' : 'actieradius onbekend';
+    el('bereik-label').textContent = bereikBekend ? 'Actieradius' : 'Actieradius onbekend';
 
     const stekker = el('chip-stekker');
     if (accu.plugged_in === true) {
@@ -526,7 +774,7 @@
     }
 
     const soh = el('chip-soh');
-    if (typeof accu.state_of_health_percent === 'number') {
+    if (isNum(accu.state_of_health_percent)) {
       soh.hidden = false;
       soh.textContent = 'Accugezondheid ' + getal(accu.state_of_health_percent) + '%';
       soh.className = 'chip ' + (accu.state_of_health_percent < 80 ? 'chip--let-op' : 'chip--stil');
@@ -536,7 +784,7 @@
 
     /* Beschikbare energie in de accu (batteryAvailableEnergy). */
     const energie = el('chip-energie');
-    if (typeof accu.available_energy_kwh === 'number' && isFinite(accu.available_energy_kwh)) {
+    if (isNum(accu.available_energy_kwh)) {
       energie.hidden = false;
       const kwh = accu.available_energy_kwh;
       energie.textContent = 'Beschikbaar ' + getal(kwh, Number.isInteger(kwh) ? 0 : 1) + ' kWh';
@@ -546,7 +794,7 @@
 
     /* Accutemperatuur levert deze auto normaal niet; tonen als hij het wél doet. */
     const accutemp = el('chip-accutemp');
-    if (typeof accu.battery_temperature_c === 'number' && isFinite(accu.battery_temperature_c)) {
+    if (isNum(accu.battery_temperature_c)) {
       accutemp.hidden = false;
       accutemp.textContent = 'Accu ' + getal(accu.battery_temperature_c, 0) + ' °C';
     } else {
@@ -557,7 +805,7 @@
        restduur bij een auto die niet laadt is een oud getal dat niets betekent. */
     const laadtijd = el('laadtijd');
     const minuten = accu.charging_remaining_minutes;
-    if (accu.charging === true && typeof minuten === 'number' && isFinite(minuten) && minuten >= 0) {
+    if (accu.charging === true && isNum(minuten) && minuten >= 0) {
       laadtijd.hidden = false;
       el('laadtijd-waarde').textContent = laadtijdKort(minuten);   // "nog 4 uur 14"
       el('laadtijd-lang').textContent = laadtijdLang(minuten);
@@ -610,7 +858,7 @@
 
   function toonKlimaat(klimaat) {
     const vak = el('klimaat-status');
-    const temp = typeof klimaat.target_temp_c === 'number' ? Math.round(klimaat.target_temp_c) : null;
+    const temp = isNum(klimaat.target_temp_c) ? Math.round(klimaat.target_temp_c) : null;
     klimaatDraait = klimaat.running === true;
     serverTemp = temp;
 
@@ -632,16 +880,19 @@
     el('klimaat-stop').className = 'knop knop--groot knop--los ' + (aan ? 'knop--primair' : 'knop--rand');
 
     /* De gemeten binnentemperatuur is iets ánders dan de streeftemperatuur.
-       Daarom een eigen vak, met één decimaal (16,0 °C) tegenover de hele
-       graden van de instelling — ook in de cijfers zie je meteen het verschil. */
+       Daarom een eigen meter — iets wat je afleest — met één decimaal
+       (16,0 °C) tegenover de hele graden van de instelling, en in de koele
+       "meting"-kleur in plaats van een statuskleur: er valt hier niets te
+       beoordelen, alleen af te lezen. De instelling blijft knoppen en een
+       schuif, en krijgt nadrukkelijk géén meter. */
     const meting = el('binnen-meting');
     const binnen = klimaat.internal_temperature_c;
-    if (typeof binnen === 'number' && isFinite(binnen)) {
+    if (isNum(binnen)) {
       meting.hidden = false;
-      el('binnen-waarde').textContent = getal(binnen, 1);
+      meterBinnen.zet({ waarde: binnen, ernst: 'meting' });
     } else {
       meting.hidden = true;
-      el('binnen-waarde').textContent = '–';
+      meterBinnen.zet({ waarde: null, ernst: 'onbekend' });
     }
 
     if (temp !== null && !tempAangeraakt) zetTemp(temp, true);
