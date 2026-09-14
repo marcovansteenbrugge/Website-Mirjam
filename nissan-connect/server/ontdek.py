@@ -43,21 +43,46 @@ DIENSTEN: dict[str, str] = {
     "2042": "Temperatuurinstelling",
 }
 
-#: Alleen-lezen adressen om af te tasten. {vin} wordt ingevuld.
-PROEVEN: list[tuple[str, str, str]] = [
-    ("Accustatus (bff-web v3)", "user", "v3/cars/{vin}/battery-status"),
-    ("Accustatus (car-adapter v1)", "car", "v1/cars/{vin}/battery-status"),
-    ("Klimaat", "car", "v1/cars/{vin}/hvac-status"),
-    ("Locatie", "car", "v1/cars/{vin}/location"),
-    ("Kilometerstand", "car", "v1/cars/{vin}/cockpit"),
-    ("Deuren en sloten", "car", "v1/cars/{vin}/lock-status"),
-    ("Bandenspanning", "car", "v1/cars/{vin}/pressure"),
-    ("Laadschema", "car", "v1/cars/{vin}/charging-settings"),
-    ("Laadmodus", "car", "v1/cars/{vin}/charge-mode"),
-    ("Energie-overzicht", "car", "v1/cars/{vin}/energy-unit-cost"),
-    ("Ritten deze maand", "car", "v1/cars/{vin}/trip-history"),
-    ("Onderhoud", "user", "v2/cars/{vin}/maintenance"),
-    ("Meldingen", "user", "v1/cars/{vin}/notifications"),
+#: Alleen-lezen adressen om af te tasten: (omschrijving, host, pad, params).
+#: Host is "user" (bff-web), "car" (car-adapter) of "notif" (notifications).
+#:
+#: Waarom meerdere varianten van hetzelfde: bij de accustand bleek de bff-web-
+#: route voor de Ariya rijkere gegevens te geven dan de car-adapter, terwijl
+#: beide bestaan. Welke route bij welk gegeven hoort is nergens vastgelegd, dus
+#: wordt het gemeten in plaats van aangenomen.
+PROEVEN: list[tuple[str, str, str, dict[str, str]]] = [
+    ("Accustatus (bff-web v3)", "user", "v3/cars/{vin}/battery-status", {}),
+    ("Accustatus (car-adapter v1)", "car", "v1/cars/{vin}/battery-status", {}),
+    ("Klimaat", "car", "v1/cars/{vin}/hvac-status", {}),
+    ("Locatie", "car", "v1/cars/{vin}/location", {}),
+    ("Kilometerstand", "car", "v1/cars/{vin}/cockpit", {}),
+    ("Bandenspanning", "car", "v1/cars/{vin}/pressure", {}),
+
+    # --- Deuren en sloten: drie routes, want de car-adapter gaf 403 ---------
+    ("Deuren (car-adapter v1)", "car", "v1/cars/{vin}/lock-status", {}),
+    ("Deuren (car-adapter v2)", "car", "v2/cars/{vin}/lock-status", {}),
+    ("Deuren (bff-web v1)", "user", "v1/cars/{vin}/lock-status", {}),
+    ("Deuren (bff-web v3)", "user", "v3/cars/{vin}/lock-status", {}),
+
+    # --- Laden: dienst 308 staat AAN, dus ergens moet dit te halen zijn -----
+    ("Laadschema (car-adapter)", "car", "v1/cars/{vin}/charging-settings", {}),
+    ("Laadschema (bff-web v1)", "user", "v1/cars/{vin}/charging-settings", {}),
+    ("Laadschema (bff-web v2)", "user", "v2/cars/{vin}/charging-settings", {}),
+    ("Laadmodus (bff-web)", "user", "v1/cars/{vin}/charge-mode", {}),
+
+    # --- Meldingen: eerder op de verkeerde host geprobeerd ------------------
+    ("Meldingen (eigen host)", "notif", "v2/{vin}/notifications", {}),
+    ("Meldingen (eigen host v1)", "notif", "v1/{vin}/notifications", {}),
+
+    # --- Onderhoud en ritten -----------------------------------------------
+    ("Onderhoud (bff-web v1)", "user", "v1/cars/{vin}/maintenance", {}),
+    ("Voertuigdetails", "user", "v5/cars/{vin}", {}),
+    (
+        "Ritten (met datums)",
+        "car",
+        "v1/cars/{vin}/trip-history",
+        {"type": "monthly", "start": "2026-08", "end": "2026-09"},
+    ),
 ]
 
 
@@ -100,15 +125,15 @@ async def main() -> None:
             print(f"  [{merk}] {ident:>5}  {naam}")
 
         print("\n\nWAT IS ER ECHT OP TE HALEN\n")
-        for omschrijving, host, pad in PROEVEN:
-            basis = (
-                client._settings["user_base_url"]
-                if host == "user"
-                else client._settings["car_adapter_base_url"]
-            )
-            url = basis + pad.format(vin=vin)
+        hosts = {
+            "user": client._settings["user_base_url"],
+            "car": client._settings["car_adapter_base_url"],
+            "notif": client._settings["notifications_base_url"],
+        }
+        for omschrijving, host, pad, params in PROEVEN:
+            url = hosts[host] + pad.format(vin=vin)
             try:
-                body = await client._request("GET", url)
+                body = await client._request("GET", url, params=params or None)
             except ApiError as exc:
                 print(f"  [nee] {omschrijving:<30} {exc.code}")
                 continue
