@@ -472,7 +472,7 @@ body {
   font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
 }
 .band-eenheid { font-size: 0.85rem; font-weight: 600; color: var(--tekst-zacht); }
-.band-staat { font-size: 0.72rem; color: var(--tekst-gedempt); }
+.band-staat { font-size: 0.72rem; color: var(--tekst-zacht); }
 
 .band--let-op {
   border-color: var(--alarm); border-width: 2px;
