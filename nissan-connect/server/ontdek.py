@@ -22,26 +22,34 @@ from app.config import get_settings
 from app.errors import ApiError
 from app.vehicle.kamereon import KamereonVehicleClient
 
-#: Betekenis van de dienst-ID's die Nissan meestuurt. Wat hier niet in staat,
-#: wordt gewoon als onbekend getoond -- liever eerlijk dan verzonnen.
+#: Betekenis van de dienst-ID's die Nissan meestuurt.
+#:
+#: LET OP -- dit is grotendeels GISWERK en blijkt aantoonbaar onbetrouwbaar.
+#: Op een echte Ariya staat 308 op ACTIVATED terwijl het laadschema-adres 403
+#: teruggeeft, en 311 staat aan terwijl onderhoud 404 geeft. Omgekeerd werkt de
+#: locatie prima terwijl het nummer dat daarbij zou horen niet eens in de lijst
+#: voorkomt. Vertrouw dus de metingen in het onderste deel van dit script, niet
+#: deze tabel.
+#:
+#: Alleen deze vier zijn bevestigd doordat het bijbehorende adres ook echt
+#: gegevens teruggaf:
 DIENSTEN: dict[str, str] = {
-    "300": "Voertuiggegevens",
-    "301": "Locatie van de auto",
-    "302": "Deuren en sloten",
-    "303": "Claxon en lichten",
-    "305": "Ritgeschiedenis",
-    "307": "Interieurtemperatuur instellen",
-    "308": "Laadschema",
-    "309": "Meldingen",
-    "310": "Kilometerstand",
-    "311": "Onderhoudsinformatie",
-    "312": "Bandenspanning",
-    "319": "Accustatus",
-    "323": "Accugezondheid",
-    "366": "Voorverwarmen aan/uit",
-    "401": "Alarmmeldingen",
-    "2042": "Temperatuurinstelling",
+    "319": "Accustatus (bevestigd)",
+    "366": "Voorverwarmen aan/uit (bevestigd)",
+    "312": "Bandenspanning (bevestigd)",
+    "2042": "Temperatuurinstelling (bevestigd)",
+    # Hieronder: vermoedens uit oudere bronnen, NIET bevestigd op deze auto.
+    "301": "Locatie?",
+    "302": "Deuren en sloten?",
+    "303": "Claxon en lichten?",
+    "305": "Ritgeschiedenis?",
+    "307": "Interieurtemperatuur?",
+    "308": "Laadschema? (adres gaf 403)",
+    "310": "Kilometerstand?",
+    "311": "Onderhoud? (adres gaf 404)",
+    "323": "Accugezondheid?",
 }
+
 
 #: Alleen-lezen adressen om af te tasten: (omschrijving, host, pad, params).
 #: Host is "user" (bff-web), "car" (car-adapter) of "notif" (notifications).
