@@ -30,6 +30,24 @@ Open daarna http://localhost:8000 en vul het token in dat je in `.env` zette.
 Je ziet een nagebootste Ariya: de accu loopt langzaam leeg, opladen werkt,
 voorverwarmen duurt zoals in het echt een halve minuut.
 
+## Snelkoppeling op je bureaublad
+
+Eenmalig, vanuit de map `nissan-connect`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\maak-snelkoppeling.ps1
+```
+
+Daarna staat er een snelkoppeling **Ariya** op je bureaublad. Dubbelklikken
+start de server en opent de pagina zodra die klaar is — niet eerder, want een
+te vroeg geopende pagina toont een foutmelding die eruitziet alsof er iets stuk is.
+
+Draait de server al, dan opent de snelkoppeling alleen de pagina in plaats van
+een tweede server te starten.
+
+Het venster dat daarbij hoort houdt de server draaiend. **Sluit je dat venster,
+dan stopt de app.** Dat is bewust: zo is altijd zichtbaar of hij aanstaat.
+
 ## Daarna met de echte auto
 
 Zet in `.env`:
