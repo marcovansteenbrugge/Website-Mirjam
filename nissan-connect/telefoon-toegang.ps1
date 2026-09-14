@@ -48,13 +48,31 @@ $openbaar  = $profielen | Where-Object { $_.NetworkCategory -eq "Public" }
 if ($openbaar -and -not ($profielen | Where-Object { $_.NetworkCategory -eq "Private" })) {
     Write-Host ""
     Write-Host "Let op: Windows ziet dit netwerk als OPENBAAR." -ForegroundColor Yellow
-    Write-Host "Een regel voor het thuisnetwerk werkt dan niet."
+    Write-Host "Een regel voor het thuisnetwerk werkt dan niet. Het betreft:"
     Write-Host ""
-    Write-Host "Zet je wifi op 'Prive' via Instellingen > Netwerk > Wi-Fi >"
-    Write-Host "je netwerk > Netwerkprofieltype: Prive. Draai dit script daarna opnieuw."
+    foreach ($p in $openbaar) {
+        Write-Host ("  - {0}  (via {1})" -f $p.Name, $p.InterfaceAlias)
+    }
     Write-Host ""
-    Read-Host "Druk op Enter om te sluiten"
-    exit 1
+    Write-Host "Omzetten kan hier meteen, of via Instellingen > Netwerk en internet"
+    Write-Host "> Ethernet (of Wi-Fi) > Netwerkprofieltype: Prive."
+    Write-Host ""
+    $antwoord = Read-Host "Nu omzetten naar Prive? (j/n)"
+    if ($antwoord -match '^[jJyY]') {
+        try {
+            $openbaar | Set-NetConnectionProfile -NetworkCategory Private
+            Write-Host "`nOmgezet naar Prive. Het script gaat verder." -ForegroundColor Green
+            Start-Sleep -Seconds 2
+        } catch {
+            Write-Host "`nOmzetten mislukt: $($_.Exception.Message)" -ForegroundColor Red
+            Read-Host "`nDruk op Enter om te sluiten"
+            exit 1
+        }
+    } else {
+        Write-Host "`nNiets gewijzigd. Draai dit script opnieuw zodra het netwerk op Prive staat."
+        Read-Host "`nDruk op Enter om te sluiten"
+        exit 1
+    }
 }
 
 # --- Firewallregel ----------------------------------------------------------
