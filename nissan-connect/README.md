@@ -48,6 +48,32 @@ een tweede server te starten.
 Het venster dat daarbij hoort houdt de server draaiend. **Sluit je dat venster,
 dan stopt de app.** Dat is bewust: zo is altijd zichtbaar of hij aanstaat.
 
+## Op je telefoon
+
+Eenmalig, vanuit de map `nissan-connect`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\telefoon-toegang.ps1
+```
+
+Dit vraagt om beheerdersrechten en maakt één firewallregel aan, uitsluitend voor
+je **thuisnetwerk** — op openbare wifi blijft alles dicht. Je krijgt daarna het
+adres te zien dat je op je telefoon intypt, zoiets als `http://192.168.1.42:8000`.
+Datzelfde adres verschijnt voortaan ook in het startvenster.
+
+Voeg de pagina op je telefoon toe aan je beginscherm: hij opent dan schermvullend
+zonder adresbalk, als een gewone app.
+
+Weer dichtzetten:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\telefoon-toegang.ps1 -Verwijderen
+```
+
+**Wat dit niet doet:** je laptop moet aanstaan en wakker zijn, en je moet thuis
+zijn. Onderweg werkt het niet. Iedereen op je thuisnetwerk kan de pagina bereiken;
+het app-token is dan de enige drempel, dus houd dat token serieus.
+
 ## Daarna met de echte auto
 
 Zet in `.env`:

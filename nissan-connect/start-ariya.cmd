@@ -7,6 +7,10 @@ rem  Start de Ariya-app en opent de pagina in je browser.
 rem
 rem  Dubbelklik dit bestand, of gebruik de snelkoppeling op je bureaublad.
 rem  Dit venster sluiten stopt de server.
+rem
+rem  De server luistert ook op je thuisnetwerk, zodat je telefoon erbij kan.
+rem  Dat werkt pas nadat je telefoon-toegang.ps1 eenmalig hebt gedraaid; tot
+rem  die tijd houdt de Windows-firewall alles van buiten gewoon tegen.
 rem ---------------------------------------------------------------------
 
 cd /d "%~dp0server"
@@ -47,7 +51,15 @@ echo.
 echo   Ariya start op http://localhost:8000
 echo   De pagina opent vanzelf zodra de server klaar is.
 echo.
+
+rem Het adres van deze pc tonen, voor op de telefoon.
+for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "$c = Get-NetIPConfiguration ^| Where-Object { $_.IPv4DefaultGateway -and $_.NetAdapter.Status -eq 'Up' } ^| Select-Object -First 1; if ($c) { $c.IPv4Address.IPAddress }"`) do set LANIP=%%i
+if defined LANIP (
+  echo   Op je telefoon, op dezelfde wifi:  http://%LANIP%:8000
+  echo.
+)
+
 echo   Dit venster sluiten stopt de server.
 echo.
 
-.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
+.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000
