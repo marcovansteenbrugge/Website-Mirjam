@@ -508,3 +508,327 @@ async def test_een_echt_vreemde_host_blijft_wel_een_fout() -> None:
             await client._follow_login_redirects(response)
     finally:
         await client.aclose()
+
+
+# --------------------------------------------------------------------------- #
+# Uitbreiding 14-09-2026: locatie, kilometerstand, banden, capabilities
+#
+# De antwoorden hieronder zijn de wáárden die op de echte Ariya gemeten zijn.
+# Zo controleert dit niet alleen of de code draait, maar ook of er precies
+# uitkomt wat de auto werkelijk stuurde.
+# --------------------------------------------------------------------------- #
+
+from app.errors import FeatureUnavailable  # noqa: E402
+from app.vehicle.kamereon import (  # noqa: E402
+    RAW_PRESSURE_PER_BAR,
+    battery_temperature_c,
+    raw_pressure_to_bar,
+)
+
+#: Precies zoals de auto het teruggaf.
+_LOCATIE = {
+    "gpsLatitude": 51.675196944444444,
+    "gpsLongitude": 5.042029166666667,
+    "gpsDirection": 298.0,
+    "lastUpdateTime": "2026-09-14T07:05:26Z",
+}
+_COCKPIT = {"totalMileage": 21126}
+_BANDEN = {
+    "flPressure": 2070, "frPressure": 2010,
+    "rlPressure": 2160, "rrPressure": 2100,
+    "flStatus": 0, "frStatus": 0, "rlStatus": 0, "rrStatus": 0,
+}
+
+
+def _volledig(recorder: list[httpx.Request], *, verboden: frozenset[str] = frozenset()):
+    """Een auto die precies antwoordt zoals de echte: inclusief 403 op deuren."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        recorder.append(request)
+        path = request.url.path
+        if path.endswith("/v5/users/user-1/cars"):
+            return httpx.Response(200, json={"data": [_CAR]})
+        if any(marker in path for marker in verboden):
+            return httpx.Response(403, json={"message": "Forbidden"})
+        if "/battery-status" in path:
+            return httpx.Response(200, json={"data": {"attributes": {
+                "batteryLevel": 64,
+                "batteryAutonomy": 288,
+                "batteryCapacity": 87,
+                "plugStatus": 1,
+                "chargingStatus": 1,
+                "chargingRemainingTime": 254,
+                "batteryAvailableEnergy": 22,
+                # De echte auto gaf 0 terwijl hij stond te laden.
+                "batteryTemperature": 0,
+                "lastUpdateTime": "2026-09-13T07:32:00Z",
+            }}})
+        if path.endswith("/hvac-status"):
+            return httpx.Response(200, json={"data": {"attributes": {
+                "hvacStatus": "off",
+                "nextTargetTemperature": 21,
+                "internalTemperature": 16.0,
+                "lastUpdateTime": "2026-09-13T07:40:00Z",
+            }}})
+        if path.endswith("/location"):
+            return httpx.Response(200, json={"data": {"attributes": _LOCATIE}})
+        if path.endswith("/cockpit"):
+            return httpx.Response(200, json={"data": {"attributes": _COCKPIT}})
+        if path.endswith("/pressure"):
+            return httpx.Response(200, json={"data": {"attributes": _BANDEN}})
+        # Deuren, laadschema, laadmodus: dit doet de echte auto óók.
+        return httpx.Response(403, json={"message": "Forbidden"})
+
+    return handler
+
+
+# -- omrekening van de bandenspanning --------------------------------------
+
+
+def test_bandenspanning_wordt_door_duizend_gedeeld() -> None:
+    """2070 -> 2,07 bar. Aangenomen deelfactor; zie RAW_PRESSURE_PER_BAR."""
+    assert RAW_PRESSURE_PER_BAR == 1000.0
+    assert raw_pressure_to_bar(2070) == 2.07
+    assert raw_pressure_to_bar(2010) == 2.01
+    assert raw_pressure_to_bar(2160) == 2.16
+
+
+@pytest.mark.parametrize("onzin", [None, "2070", 0, -1, True])
+def test_onbruikbare_bandenspanning_wordt_niet_geraden(onzin: object) -> None:
+    assert raw_pressure_to_bar(onzin) is None
+
+
+# -- accutemperatuur: 0 betekent "niet ondersteund" ------------------------
+
+
+def test_accutemperatuur_nul_wordt_null() -> None:
+    """0 op een ládende auto is geen meting maar een leeg veld."""
+    assert battery_temperature_c(0) is None
+    assert battery_temperature_c(0.0) is None
+    assert battery_temperature_c(12.5) == 12.5
+    assert battery_temperature_c(-4) == -4.0
+    assert battery_temperature_c(None) is None
+
+
+# -- de nieuwe uitlezingen -------------------------------------------------
+
+
+async def test_locatie_wordt_gelezen_van_de_car_adapter() -> None:
+    verzoeken: list[httpx.Request] = []
+    client = _make_client(_volledig(verzoeken))
+    try:
+        locatie = await client.get_location()
+    finally:
+        await client.aclose()
+
+    verzoek = [r for r in verzoeken if r.url.path.endswith("/location")][0]
+    assert "/car-adapter/v1/cars/SJNFAAZE0U0000001/location" in str(verzoek.url)
+    assert locatie.latitude == 51.675196944444444
+    assert locatie.longitude == 5.042029166666667
+    assert locatie.heading_degrees == 298.0
+    assert locatie.updated_at is not None
+    assert locatie.stale_minutes is not None
+
+
+async def test_kilometerstand_komt_uit_cockpit() -> None:
+    verzoeken: list[httpx.Request] = []
+    client = _make_client(_volledig(verzoeken))
+    try:
+        stand = await client.get_odometer()
+    finally:
+        await client.aclose()
+
+    verzoek = [r for r in verzoeken if r.url.path.endswith("/cockpit")][0]
+    assert "/car-adapter/v1/cars/SJNFAAZE0U0000001/cockpit" in str(verzoek.url)
+    assert stand.total_km == 21126
+    # De auto stuurt hier geen tijdstempel mee; dan blijft het leeg.
+    assert stand.updated_at is None
+
+
+async def test_bandenspanning_per_wiel() -> None:
+    verzoeken: list[httpx.Request] = []
+    client = _make_client(_volledig(verzoeken))
+    try:
+        banden = await client.get_tyres()
+    finally:
+        await client.aclose()
+
+    verzoek = [r for r in verzoeken if r.url.path.endswith("/pressure")][0]
+    assert "/car-adapter/v1/cars/SJNFAAZE0U0000001/pressure" in str(verzoek.url)
+    assert banden.front_left.bar == 2.07
+    assert banden.front_right.bar == 2.01
+    assert banden.rear_left.bar == 2.16
+    assert banden.rear_right.bar == 2.10
+    assert all(
+        wiel.ok is True
+        for wiel in (banden.front_left, banden.front_right, banden.rear_left, banden.rear_right)
+    )
+
+
+async def test_band_met_waarschuwing_is_niet_ok() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/cars"):
+            return httpx.Response(200, json={"data": [_CAR]})
+        return httpx.Response(200, json={"data": {"attributes": dict(_BANDEN, flStatus=1)}})
+
+    client = _make_client(handler)
+    try:
+        banden = await client.get_tyres()
+    finally:
+        await client.aclose()
+    assert banden.front_left.ok is False
+    assert banden.rear_right.ok is True
+
+
+async def test_accu_levert_laadtijd_energie_en_geen_valse_nul_graden() -> None:
+    client = _make_client(_volledig([]))
+    try:
+        accu = await client.get_battery()
+    finally:
+        await client.aclose()
+    assert accu.charging_remaining_minutes == 254
+    assert accu.available_energy_kwh == 22.0
+    # batteryTemperature stond op 0 in het antwoord: dat is "niet ondersteund".
+    assert accu.battery_temperature_c is None
+
+
+async def test_streeftemperatuur_en_binnentemperatuur_zijn_niet_hetzelfde() -> None:
+    """De valkuil uit het contract: 21 is wat je wilt, 16 is wat het is."""
+    client = _make_client(_volledig([]))
+    try:
+        klimaat = await client.get_climate()
+    finally:
+        await client.aclose()
+    assert klimaat.target_temp_c == 21.0
+    assert klimaat.internal_temperature_c == 16.0
+    assert klimaat.target_temp_c != klimaat.internal_temperature_c
+
+
+# -- capabilities ----------------------------------------------------------
+
+
+async def test_capabilities_meet_wat_de_auto_werkelijk_kan() -> None:
+    verzoeken: list[httpx.Request] = []
+    client = _make_client(_volledig(verzoeken))
+    try:
+        kunnen = await client.get_capabilities()
+    finally:
+        await client.aclose()
+
+    assert kunnen.model_dump() == {
+        "battery": True,
+        "climate": True,
+        "location": True,
+        "odometer": True,
+        "tyres": True,
+        "doors": False,
+        "charge_schedule": False,
+    }
+    # Deuren en laadschema zijn écht geprobeerd -- geen harde lijst.
+    paden = [r.url.path for r in verzoeken]
+    assert any(p.endswith("/lock-status") for p in paden)
+    assert any(p.endswith("/charging-settings") for p in paden)
+
+
+async def test_403_belandt_als_false_en_wordt_niet_opnieuw_gevraagd() -> None:
+    """Anders kost elke paginaweergave weer een reeks mislukkende verzoeken."""
+    verzoeken: list[httpx.Request] = []
+    client = _make_client(_volledig(verzoeken))
+    try:
+        await client.get_capabilities()
+        na_eerste = len(verzoeken)
+
+        tweede = await client.get_capabilities()
+        assert tweede.doors is False
+        assert len(verzoeken) == na_eerste, "er is opnieuw naar Nissan gebeld"
+    finally:
+        await client.aclose()
+
+
+async def test_onderdeel_met_403_geeft_een_nette_uitleg_en_stopt_met_proberen() -> None:
+    verzoeken: list[httpx.Request] = []
+    client = _make_client(_volledig(verzoeken, verboden=frozenset({"/pressure"})))
+    try:
+        with pytest.raises(FeatureUnavailable) as exc:
+            await client.get_tyres()
+        assert "ondersteunt" in exc.value.message
+        assert "bandenspanning" in exc.value.message
+        assert exc.value.retryable is False
+        assert exc.value.status_code == 501
+
+        gevraagd = len([r for r in verzoeken if r.url.path.endswith("/pressure")])
+        with pytest.raises(FeatureUnavailable):
+            await client.get_tyres()
+        assert len([r for r in verzoeken if r.url.path.endswith("/pressure")]) == gevraagd
+
+        kunnen = await client.get_capabilities()
+        assert kunnen.tyres is False
+        assert kunnen.location is True
+    finally:
+        await client.aclose()
+
+
+async def test_404_telt_ook_als_niet_ondersteund() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/cars"):
+            return httpx.Response(200, json={"data": [_CAR]})
+        return httpx.Response(404, json={"message": "Not Found"})
+
+    client = _make_client(handler)
+    try:
+        with pytest.raises(FeatureUnavailable):
+            await client.get_odometer()
+        assert client._capabilities.get("odometer") is False
+    finally:
+        await client.aclose()
+
+
+async def test_403_op_een_onbewezen_token_blijft_een_sessieprobleem() -> None:
+    """Een verlopen sessie mag de halve auto niet als "kan niet" wegzetten."""
+    client = _make_client(lambda request: httpx.Response(403, json={"message": "Forbidden"}))
+    try:
+        with pytest.raises(ApiError) as exc:
+            await client._request(
+                "GET", "https://example.invalid/car-adapter/v1/cars/X/location",
+                feature="het opvragen van de locatie",
+            )
+        assert not isinstance(exc.value, FeatureUnavailable)
+        assert client._capabilities.get("location") is None
+    finally:
+        await client.aclose()
+
+
+async def test_verlopen_abonnement_telt_als_onbeschikbaar() -> None:
+    """Geen actieve diensten is ook "deze auto levert dit niet"."""
+    zonder = dict(_CAR, services=[{"id": 319, "activationState": "EXPIRED"}])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": [zonder]})
+
+    client = _make_client(handler)
+    try:
+        with pytest.raises(FeatureUnavailable) as exc:
+            await client.get_battery()
+        assert "abonnement" in exc.value.message
+        assert client._capabilities.get("battery") is False
+    finally:
+        await client.aclose()
+
+
+async def test_slapende_auto_zet_een_onderdeel_niet_op_false() -> None:
+    """Een storing is geen bewijs. Alleen een hard 403/404 telt."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/cars"):
+            return httpx.Response(200, json={"data": [_CAR]})
+        if request.url.path.endswith("/location"):
+            return httpx.Response(503)
+        return httpx.Response(200, json={"data": {"attributes": _COCKPIT}})
+
+    client = _make_client(handler)
+    try:
+        with pytest.raises(ApiError) as exc:
+            await client.get_location()
+        assert exc.value.code == "vehicle_asleep"
+        assert client._capabilities.get("location") is None
+    finally:
+        await client.aclose()

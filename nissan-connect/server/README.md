@@ -134,6 +134,38 @@ Alle endpoints vragen `Authorization: Bearer <APP_TOKEN>`.
 | `GET` | `/api/climate` | Draait de klimaatregeling? |
 | `POST` | `/api/climate/start` | Voorverwarmen, body `{"target_temp_c": 21.0}` (16–26, hele graden) |
 | `POST` | `/api/climate/stop` | Klimaatregeling uit |
+| `GET` | `/api/location` | Laatst bekende positie: breedte, lengte, kompasrichting |
+| `GET` | `/api/odometer` | Kilometerstand |
+| `GET` | `/api/tyres` | Bandenspanning per wiel, in bar |
+| `GET` | `/api/capabilities` | Wat deze auto werkelijk ondersteunt |
+
+`location`, `odometer` en `tyres` lezen — net als `battery` — alleen wat Nissan
+al in de cloud heeft staan. Ze maken de auto niet wakker.
+
+### Wat kan deze auto eigenlijk?
+
+`GET /api/capabilities` zegt per onderdeel of het beschikbaar is. Dat staat
+nergens in een lijstje in de code: de backend probeert elk onderdeel één keer
+écht en onthoudt het antwoord. Lukt het, dan `true`; antwoordt Nissan met 403 of
+404, dan `false` en wordt het die sessie niet meer gevraagd. Zo klopt het ook op
+een andere auto of met een ander abonnement, en kost een paginaweergave geen
+reeks verzoeken waarvan het antwoord al bekend is.
+
+Op de Ariya uit 2022 geven deuren, laadschema, laadmodus en energie 403. Een
+verzoek aan zo'n onderdeel levert daarom geen "er ging iets mis", maar status
+501 met de uitleg dat deze auto dit niet ondersteunt. De mock-auto doet hier
+precies hetzelfde, zodat de frontend dat geval ook in de demo tegenkomt.
+
+### Twee aannames die je moet kennen
+
+- **Bandenspanning.** De auto geeft `flPressure: 2070`. Gedeeld door 1000 is dat
+  2,07 bar, wat klopt voor een personenauto — maar de eenheid is nergens
+  bevestigd. Klopt de weergave niet met je bandenpompmeter, kijk dan bij
+  `RAW_PRESSURE_PER_BAR` in `app/vehicle/kamereon.py`.
+- **Accutemperatuur.** `batteryTemperature` gaf 0 terwijl de auto stond te laden.
+  Een ladende accu is nooit precies 0 graden, dus dat is vrijwel zeker een
+  niet-ingevuld veld. De backend maakt er `null` van in plaats van "het
+  vriespunt" te tonen.
 
 Lange opdrachten (verse meting, voorverwarmen) duren 10–60 seconden. Die geven
 meteen een `job_id` terug; de webpagina pollt daarna `/api/jobs/{job_id}`.

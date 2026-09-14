@@ -30,7 +30,11 @@ from .vehicle.base import (
     MIN_TARGET_TEMP_C,
     TARGET_TEMP_STEP_C,
     BatteryState,
+    Capabilities,
     ClimateState,
+    LocationState,
+    OdometerState,
+    TyreState,
     VehicleClient,
     VehicleInfo,
 )
@@ -439,6 +443,58 @@ def _register_routes(app: FastAPI) -> None:
             timeout_seconds=settings.job_timeout_seconds,
         )
         return JobCreated(job_id=job.id, status=job.status)
+
+
+    # ---------------------------------------------------------------- #
+    # Gegevens die de auto sinds 14-09-2026 aantoonbaar teruggeeft
+    #
+    # Alle drie zijn *gecachete* waarden uit de Nissan-cloud: ze maken de auto
+    # niet wakker en vallen dus niet onder de rem op `battery/refresh`.
+    # Ondersteunt deze auto een onderdeel niet, dan geeft de client een
+    # FeatureUnavailable -- een ApiError met een Nederlandse uitleg, die door
+    # de bestaande foutafhandeling gewoon het contract-schema volgt.
+    # ---------------------------------------------------------------- #
+
+    @app.get(
+        "/api/location",
+        response_model=LocationState,
+        dependencies=guard,
+        responses=_ERROR_RESPONSES,
+        summary="Waar de auto het laatst gezien is",
+    )
+    async def get_location(request: Request) -> LocationState:
+        return await _client(request).get_location()
+
+    @app.get(
+        "/api/odometer",
+        response_model=OdometerState,
+        dependencies=guard,
+        responses=_ERROR_RESPONSES,
+        summary="Kilometerstand",
+    )
+    async def get_odometer(request: Request) -> OdometerState:
+        return await _client(request).get_odometer()
+
+    @app.get(
+        "/api/tyres",
+        response_model=TyreState,
+        dependencies=guard,
+        responses=_ERROR_RESPONSES,
+        summary="Bandenspanning van alle vier de wielen",
+    )
+    async def get_tyres(request: Request) -> TyreState:
+        return await _client(request).get_tyres()
+
+    @app.get(
+        "/api/capabilities",
+        response_model=Capabilities,
+        dependencies=guard,
+        responses=_ERROR_RESPONSES,
+        summary="Wat deze auto werkelijk ondersteunt",
+    )
+    async def get_capabilities(request: Request) -> Capabilities:
+        """Wordt door de client gemeten en onthouden; dit is dus goedkoop."""
+        return await _client(request).get_capabilities()
 
 
 def _mount_frontend(app: FastAPI) -> None:

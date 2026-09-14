@@ -150,6 +150,10 @@ async def test_battery_endpoint_velden(client: httpx.AsyncClient) -> None:
         "plugged_in",
         "battery_capacity_kwh",
         "state_of_health_percent",
+        # Uitbreiding 14-09-2026: gemeten op de echte auto.
+        "charging_remaining_minutes",
+        "available_energy_kwh",
+        "battery_temperature_c",
         "updated_at",
         "stale_minutes",
     }
@@ -331,7 +335,12 @@ async def test_climate_status(client: httpx.AsyncClient) -> None:
     response = await client.get("/api/climate")
     assert response.status_code == 200
     body = response.json()
-    assert set(body) == {"running", "target_temp_c", "updated_at"}
+    assert set(body) == {
+        "running",
+        "target_temp_c",
+        "internal_temperature_c",
+        "updated_at",
+    }
     assert body["running"] is False
 
 
@@ -533,3 +542,160 @@ async def test_frontendmap_wordt_geserveerd(
             response = await c.get("/")
             assert response.status_code == 200
             assert "Ariya" in response.text
+
+
+# --------------------------------------------------------------------------- #
+# Uitbreiding 14-09-2026: locatie, kilometerstand, banden, capabilities
+# --------------------------------------------------------------------------- #
+
+
+async def test_location_endpoint(client: httpx.AsyncClient) -> None:
+    response = await client.get("/api/location")
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {
+        "latitude",
+        "longitude",
+        "heading_degrees",
+        "updated_at",
+        "stale_minutes",
+    }
+    assert 50.0 < body["latitude"] < 54.0
+    assert 3.0 < body["longitude"] < 7.5
+    assert 0.0 <= body["heading_degrees"] < 360.0
+    assert body["updated_at"].endswith("Z")
+
+
+async def test_locatie_veroudert_met_de_klok(
+    client: httpx.AsyncClient, clock: FakeClock
+) -> None:
+    eerst = (await client.get("/api/location")).json()["stale_minutes"]
+    clock.advance(15 * 60)
+    assert (await client.get("/api/location")).json()["stale_minutes"] == eerst + 15
+
+
+async def test_odometer_endpoint_loopt_op(
+    client: httpx.AsyncClient, clock: FakeClock
+) -> None:
+    body = (await client.get("/api/odometer")).json()
+    assert set(body) == {"total_km", "updated_at"}
+    assert body["total_km"] > 20000
+    # De echte auto stuurt geen tijdstempel bij de kilometerstand mee.
+    assert body["updated_at"] is None
+
+    clock.advance(48 * 3600)  # twee dagen verder
+    later = (await client.get("/api/odometer")).json()["total_km"]
+    assert later > body["total_km"]
+
+
+async def test_tyres_endpoint(client: httpx.AsyncClient, clock: FakeClock) -> None:
+    response = await client.get("/api/tyres")
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"front_left", "front_right", "rear_left", "rear_right", "updated_at"}
+
+    for naam in ("front_left", "front_right", "rear_left", "rear_right"):
+        wiel = body[naam]
+        assert set(wiel) == {"bar", "ok"}
+        assert 1.5 < wiel["bar"] < 3.0, naam
+        assert wiel["ok"] is True
+
+    # De spanning wandelt langzaam, zoals bij echte banden.
+    clock.advance(6 * 3600)
+    later = (await client.get("/api/tyres")).json()
+    assert later["front_left"]["bar"] != body["front_left"]["bar"]
+    assert abs(later["front_left"]["bar"] - body["front_left"]["bar"]) < 0.2
+
+
+async def test_capabilities_endpoint_kent_de_grenzen_van_deze_auto(
+    client: httpx.AsyncClient,
+) -> None:
+    response = await client.get("/api/capabilities")
+    assert response.status_code == 200
+    assert response.json() == {
+        "battery": True,
+        "climate": True,
+        "location": True,
+        "odometer": True,
+        "tyres": True,
+        # Hier antwoordt de echte auto met 403; de mock doet hetzelfde, zodat de
+        # frontend dat geval ook in de demo tegenkomt.
+        "doors": False,
+        "charge_schedule": False,
+    }
+
+
+async def test_battery_endpoint_kent_laadtijd_en_geen_valse_nul_graden(
+    client: httpx.AsyncClient, vehicle: MockVehicleClient
+) -> None:
+    stilstaand = (await client.get("/api/battery")).json()
+    assert stilstaand["charging_remaining_minutes"] is None
+    assert stilstaand["available_energy_kwh"] > 0
+    # De auto levert geen bruikbare accutemperatuur (0 = niet ondersteund).
+    assert stilstaand["battery_temperature_c"] is None
+
+    vehicle.set_charging(True)
+    ladend = (await client.get("/api/battery")).json()
+    assert ladend["charging_remaining_minutes"] > 0
+
+
+async def test_streeftemperatuur_en_binnentemperatuur_lopen_niet_door_elkaar(
+    client: httpx.AsyncClient, clock: FakeClock
+) -> None:
+    """`target_temp_c` is wat je wilt, `internal_temperature_c` is wat het is."""
+    koud = (await client.get("/api/climate")).json()
+    assert koud["running"] is False
+    assert koud["internal_temperature_c"] == 16.0
+
+    created = (await client.post("/api/climate/start", json={"target_temp_c": 24.0})).json()
+    job = await poll_job(client, created["job_id"])
+    assert job["status"] == "success", job
+
+    warm = (await client.get("/api/climate")).json()
+    assert warm["target_temp_c"] == 24.0
+    # Nog niet op temperatuur: het verschil moet zichtbaar blijven.
+    assert warm["internal_temperature_c"] < warm["target_temp_c"]
+    clock.advance(20 * 60)
+    later = (await client.get("/api/climate")).json()
+    assert later["internal_temperature_c"] > warm["internal_temperature_c"]
+    assert later["internal_temperature_c"] < later["target_temp_c"]
+
+
+async def test_onderdeel_dat_deze_auto_niet_kan_geeft_een_nette_melding(
+    settings: Settings, clock: FakeClock
+) -> None:
+    """Geen "er ging iets mis", maar: deze auto ondersteunt dit niet."""
+    from app.errors import FeatureUnavailable
+
+    class ZonderBanden(MockVehicleClient):
+        async def get_tyres(self):  # type: ignore[override]
+            raise FeatureUnavailable("het uitlezen van de bandenspanning")
+
+    auto = ZonderBanden(failure_rate=0.0, now_factory=clock)
+    app = create_app(settings, vehicle_client=auto)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+        headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+    ) as http_client:
+        async with app.router.lifespan_context(app):
+            response = await http_client.get("/api/tyres")
+
+    assert response.status_code == 501
+    fout = assert_contract_error(response)
+    assert "ondersteunt" in fout["message"]
+    assert "bandenspanning" in fout["message"]
+    assert fout["retryable"] is False
+    assert "mis" not in fout["message"]
+
+
+@pytest.mark.parametrize(
+    "pad", ["/api/location", "/api/odometer", "/api/tyres", "/api/capabilities"]
+)
+async def test_nieuwe_endpoints_eisen_een_token(
+    anon_client: httpx.AsyncClient, pad: str
+) -> None:
+    response = await anon_client.get(pad)
+    assert response.status_code == 401
+    assert_contract_error(response, "unauthorized")

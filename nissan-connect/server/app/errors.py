@@ -105,3 +105,39 @@ class ApiError(Exception):
                 "retryable": self.retryable,
             }
         }
+
+
+class FeatureUnavailable(ApiError):
+    """Deze auto (of dit abonnement) levert dit onderdeel simpelweg niet.
+
+    Nissan antwoordt op de Ariya uit 2022 met **403** op deuren, laadschema,
+    laadmodus en energie, en met **404** op onderhoud. Dat is geen storing en
+    geen inlogprobleem: het komt morgen niet vanzelf goed. Daarom een eigen
+    fouttype, zodat drie dingen tegelijk kloppen:
+
+    1. de eigenaar leest "deze auto ondersteunt dit niet" in plaats van
+       "er ging iets mis";
+    2. :meth:`app.vehicle.base.VehicleClient.get_capabilities` kan dit
+       onthouden en het onderdeel niet nog eens bevragen;
+    3. het blijft een :class:`ApiError`, dus de bestaande foutafhandeling en
+       het contract-foutschema gelden onveranderd.
+
+    De code blijft `upstream_error` -- het contract kent geen aparte code en dit
+    bestand mag niet buiten dat lijstje treden. De status is 501 (Not
+    Implemented): dit verzoek is niet uit te voeren voor deze auto.
+    """
+
+    def __init__(self, wat: str, message: str | None = None) -> None:
+        super().__init__(
+            "upstream_error",
+            message
+            or (
+                f"Deze auto ondersteunt {wat} niet. Nissan wijst het verzoek af; "
+                "waarschijnlijk zit dit onderdeel niet in deze Ariya of niet in "
+                "je NissanConnect-abonnement."
+            ),
+            status_code=501,
+            retryable=False,
+        )
+        #: Waar het over ging, voor de logs en de capability-administratie.
+        self.wat = wat

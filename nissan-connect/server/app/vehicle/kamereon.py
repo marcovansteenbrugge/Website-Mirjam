@@ -49,22 +49,32 @@ import secrets
 import time
 from datetime import datetime, timezone
 from html.parser import HTMLParser
-from typing import Any, Final
+from typing import Any, Awaitable, Callable, Final, TypeVar
 from urllib.parse import parse_qs, urljoin, urlparse
 
 import httpx
 
-from ..errors import ApiError
+from ..errors import ApiError, FeatureUnavailable
 from ..redaction import Redactor
 from .base import (
+    CAPABILITY_LABELS,
     BatteryState,
+    Capabilities,
+    CapabilityCache,
     ClimateState,
+    LocationState,
+    OdometerState,
+    TyrePressure,
+    TyreState,
     VehicleClient,
     VehicleInfo,
     compute_stale_minutes,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+#: Retourtype van een afgeschermde uitlezing (zie `_with_capability`).
+_T = TypeVar("_T")
 
 # --------------------------------------------------------------------------
 # Geverifieerde constanten -- letterlijk uit kamereon_const.py (SETTINGS_MAP)
@@ -110,6 +120,52 @@ FEATURE_INTERIOR_TEMP_SETTINGS: Final[str] = "307"
 FEATURE_TEMPERATURE: Final[str] = "2042"
 
 _MAX_REDIRECTS = 10
+
+#: Deelfactor van de ruwe bandenspanning naar bar.
+#:
+#: AANNAME, NIET BEVESTIGD. De auto gaf `flPressure: 2070`. Gedeeld door 1000
+#: is dat 2,07 bar, en dat is een normale spanning voor een personenauto; 2070
+#: van iets anders (kPa? psi?) zou volslagen onzin opleveren. Nissan
+#: documenteert de eenheid nergens en er is geen tweede bron die dit bevestigt.
+#: Klopt de weergave niet met de bandenpompmeter, dan is dít getal de verdachte.
+RAW_PRESSURE_PER_BAR: Final[float] = 1000.0
+
+#: Statuswaarde die op alle vier de wielen "in orde" betekende.
+TYRE_STATUS_OK: Final[int] = 0
+
+
+def raw_pressure_to_bar(raw: Any) -> float | None:
+    """Reken een ruwe Nissan-bandenspanning om naar bar.
+
+    Zie :data:`RAW_PRESSURE_PER_BAR`: de deelfactor is aangenomen op grond van
+    plausibiliteit, niet bevestigd. Een ontbrekende of onzinnige waarde wordt
+    `None` -- er wordt niets geraden.
+    """
+    if not isinstance(raw, (int, float)) or isinstance(raw, bool):
+        return None
+    if raw <= 0:
+        # 0 is geen bandenspanning; dat is een sensor die niets meldt.
+        return None
+    return round(float(raw) / RAW_PRESSURE_PER_BAR, 2)
+
+
+def battery_temperature_c(raw: Any) -> float | None:
+    """Lees `batteryTemperature`, waarbij 0 als "niet ondersteund" geldt.
+
+    WAAROM 0 -> None: de meting op de echte Ariya gaf 0 terwijl de auto stond te
+    laden. Een ladende accu is nooit precies 0 graden -- laden warmt op, en zelfs
+    in de vrieskou zou de waarde schommelen. Een veld dat strak op 0 blijft
+    staan is het signaal van een niet-ingevuld veld, niet van een meting.
+    0 doorgeven zou "de accu staat op het vriespunt" tonen, en dat is erger dan
+    niets tonen. Meet iemand ooit een auto die hier wél beweegt, dan hoort deze
+    functie te verdwijnen.
+    """
+    if not isinstance(raw, (int, float)) or isinstance(raw, bool):
+        return None
+    if raw == 0:
+        return None
+    return float(raw)
+
 
 #: De Kamereon-API is werkelijk traag; evcc hanteert 120 s met de opmerking
 #: "api is unbelievably slow when retrieving status". Een krappe timeout ziet
@@ -220,6 +276,14 @@ class KamereonVehicleClient(VehicleClient):
         #: account-lockout en CAPTCHA-na-N-pogingen, en dit is een echt
         #: Nissan-account. Eén duidelijke fout is beter dan een geblokkeerd account.
         self._auth_blocked: ApiError | None = None
+        #: Wat deze auto werkelijk levert, gemeten en onthouden.
+        self._capabilities = CapabilityCache()
+        #: Zodat vijf tegelijk binnenkomende paginaverzoeken niet vijf keer
+        #: dezelfde reeks proefverzoeken naar Nissan sturen.
+        self._capability_lock = asyncio.Lock()
+        #: Heeft het huidige token ooit een geslaagd antwoord opgeleverd? Zo ja,
+        #: dan is een 403 een uitspraak over de *auto* en niet over de sessie.
+        self._token_verified = False
 
     # ------------------------------------------------------------------ #
     # Foutvertaling
@@ -532,7 +596,17 @@ class KamereonVehicleClient(VehicleClient):
         *,
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
+        feature: str | None = None,
     ) -> dict[str, Any]:
+        """Doe één Kamereon-verzoek, met her-authenticatie als het token op is.
+
+        `feature` is de Nederlandse omschrijving van het onderdeel waar dit
+        verzoek bij hoort. Staat die ingevuld, dan wordt een 403 of 404 gelezen
+        als "deze auto levert dit niet" (:class:`FeatureUnavailable`) in plaats
+        van als een sessieprobleem -- maar alléén als het token zich al bewezen
+        heeft. Zonder die voorwaarde zou één verlopen sessie de halve auto als
+        "niet ondersteund" wegzetten.
+        """
         last_error: ApiError | None = None
         for attempt in range(2):
             token = await self._ensure_token(force=attempt > 0)
@@ -559,6 +633,19 @@ class KamereonVehicleClient(VehicleClient):
             except httpx.HTTPError as exc:
                 raise self._fail_upstream(f"{method} {urlparse(url).path}", str(exc)) from None
 
+            if feature is not None and response.status_code in (403, 404):
+                # 404 is nooit een sessiefout: dit adres bestaat niet voor deze
+                # auto. 403 tellen we alleen als "niet ondersteund" zodra
+                # hetzelfde token elders al gegevens opleverde.
+                if response.status_code == 404 or self._token_verified:
+                    _LOGGER.info(
+                        "Nissan gaf %s op %s: deze auto levert %s niet.",
+                        response.status_code,
+                        urlparse(url).path,
+                        feature,
+                    )
+                    raise FeatureUnavailable(feature)
+
             if response.status_code in (401, 403) and attempt == 0:
                 last_error = ApiError("nissan_auth_failed")
                 continue
@@ -572,6 +659,10 @@ class KamereonVehicleClient(VehicleClient):
                     urlparse(url).path,
                 )
                 raise status_error
+
+            # Het token werkt aantoonbaar; vanaf nu is een 403 een uitspraak
+            # over wat de auto aanbiedt.
+            self._token_verified = True
 
             if not response.content:
                 return {}
@@ -665,18 +756,16 @@ class KamereonVehicleClient(VehicleClient):
         if feature_id in active:
             return
         if not active:
-            raise ApiError(
-                "upstream_error",
+            raise FeatureUnavailable(
+                wat,
                 "Er staan geen actieve NissanConnect-diensten op deze auto. "
                 "Waarschijnlijk is het NissanConnect-abonnement verlopen — dat is "
                 "te zien (en te verlengen) in de MyNISSAN-app.",
-                retryable=False,
             )
-        raise ApiError(
-            "upstream_error",
+        raise FeatureUnavailable(
+            wat,
             f"{wat} is niet beschikbaar voor deze auto. Controleer in de MyNISSAN-app "
             "of deze dienst nog in je abonnement zit.",
-            retryable=False,
         )
 
     @staticmethod
@@ -750,6 +839,9 @@ class KamereonVehicleClient(VehicleClient):
         raise laatste or ApiError("upstream_error")
 
     async def get_battery(self) -> BatteryState:
+        return await self._with_capability("battery", self._read_battery)
+
+    async def _read_battery(self) -> BatteryState:
         """Accustand via de v3-API die de Ariya gebruikt.
 
         Geverifieerd: `fetch_battery_status_ariya()` doet
@@ -787,6 +879,12 @@ class KamereonVehicleClient(VehicleClient):
 
         updated_at = self._parse_timestamp(attributes.get("lastUpdateTime"))
 
+        # Gemeten op de echte auto: chargingRemainingTime (minuten) en
+        # batteryAvailableEnergy. Ontbreekt een veld, dan blijft het `None` --
+        # er wordt niets afgeleid of bijgeschat.
+        remaining = attributes.get("chargingRemainingTime")
+        available_energy = attributes.get("batteryAvailableEnergy")
+
         return BatteryState(
             soc_percent=int(round(soc)) if isinstance(soc, (int, float)) else None,
             range_km=int(round(range_km)) if isinstance(range_km, (int, float)) else None,
@@ -798,11 +896,25 @@ class KamereonVehicleClient(VehicleClient):
             # (BATTERY_STATE_OF_HEALTH_PERCENT) bestaat wel, maar het bijbehorende
             # responseveld is nergens vastgelegd. Daarom bewust `None` i.p.v. gokken.
             state_of_health_percent=None,
+            charging_remaining_minutes=(
+                int(round(remaining)) if isinstance(remaining, (int, float)) else None
+            ),
+            available_energy_kwh=(
+                float(available_energy)
+                if isinstance(available_energy, (int, float))
+                else None
+            ),
+            battery_temperature_c=battery_temperature_c(
+                attributes.get("batteryTemperature")
+            ),
             updated_at=updated_at,
             stale_minutes=compute_stale_minutes(updated_at),
         )
 
     async def request_battery_refresh(self) -> None:
+        return await self._with_capability("battery", self._request_battery_refresh)
+
+    async def _request_battery_refresh(self) -> None:
         """POST .../actions/refresh-battery-status (geverifieerd).
 
         Nissan bevestigt alleen de opdracht; de auto meldt de nieuwe waarde later.
@@ -818,6 +930,9 @@ class KamereonVehicleClient(VehicleClient):
         )
 
     async def get_climate(self) -> ClimateState:
+        return await self._with_capability("climate", self._read_climate)
+
+    async def _read_climate(self) -> ClimateState:
         """GET {car_adapter_base_url}v1/cars/{vin}/hvac-status (geverifieerd)."""
         car = await self._get_vehicle_data()
         self._require_feature(car, FEATURE_CLIMATE_ON_OFF, "Voorverwarmen")
@@ -829,11 +944,19 @@ class KamereonVehicleClient(VehicleClient):
 
         hvac_status = attributes.get("hvacStatus")
         running = (hvac_status == "on") if hvac_status is not None else None
+        # Twee verschillende dingen, en ze lijken op elkaar: `nextTargetTemperature`
+        # is de streefwaarde waarmee de auto gaat verwarmen, `internalTemperature`
+        # is de gemeten temperatuur in het interieur (16,0 op de echte auto,
+        # terwijl de streefwaarde 21 was).
         target = attributes.get("nextTargetTemperature")
+        internal = attributes.get("internalTemperature")
 
         return ClimateState(
             running=running,
             target_temp_c=float(target) if isinstance(target, (int, float)) else None,
+            internal_temperature_c=(
+                float(internal) if isinstance(internal, (int, float)) else None
+            ),
             updated_at=self._parse_timestamp(attributes.get("lastUpdateTime")),
         )
 
@@ -896,6 +1019,187 @@ class KamereonVehicleClient(VehicleClient):
                 }
             },
         )
+
+    # ------------------------------------------------------------------ #
+    # Wat deze auto werkelijk levert -- gemeten, niet aangenomen
+    # ------------------------------------------------------------------ #
+
+    async def _with_capability(
+        self, name: str, fetch: Callable[[], Awaitable[_T]]
+    ) -> _T:
+        """Voer `fetch` uit en onthoud of dit onderdeel iets oplevert.
+
+        Weten we al dat Nissan hier 403 of 404 op geeft, dan wordt er niet
+        opnieuw gebeld: binnen dezelfde sessie verandert dat antwoord niet.
+        Alleen een :class:`FeatureUnavailable` telt als bewijs; een slapende
+        auto of een netwerkstoring zegt niets over wat de auto kan.
+        """
+        if self._capabilities.is_unavailable(name):
+            raise FeatureUnavailable(CAPABILITY_LABELS.get(name, name))
+        try:
+            result = await fetch()
+        except FeatureUnavailable:
+            self._capabilities.remember(name, False)
+            raise
+        self._capabilities.remember(name, True)
+        return result
+
+    def _car_url(self, vin: str, pad: str) -> str:
+        return f"{self._settings['car_adapter_base_url']}v1/cars/{vin}/{pad}"
+
+    async def _vin(self) -> str:
+        car = await self._get_vehicle_data()
+        return str(car.get("vin", "")).upper()
+
+    async def get_location(self) -> LocationState:
+        return await self._with_capability("location", self._read_location)
+
+    async def _read_location(self) -> LocationState:
+        """GET {car_adapter}v1/cars/{vin}/location.
+
+        Gemeten velden: gpsLatitude, gpsLongitude, gpsDirection, lastUpdateTime.
+        """
+        vin = await self._vin()
+        body = await self._request(
+            "GET",
+            self._car_url(vin, "location"),
+            feature=CAPABILITY_LABELS["location"],
+        )
+        attributes = (body.get("data") or {}).get("attributes") or body.get("attributes") or {}
+
+        latitude = attributes.get("gpsLatitude")
+        longitude = attributes.get("gpsLongitude")
+        direction = attributes.get("gpsDirection")
+        updated_at = self._parse_timestamp(attributes.get("lastUpdateTime"))
+
+        return LocationState(
+            latitude=float(latitude) if isinstance(latitude, (int, float)) else None,
+            longitude=float(longitude) if isinstance(longitude, (int, float)) else None,
+            heading_degrees=float(direction) if isinstance(direction, (int, float)) else None,
+            updated_at=updated_at,
+            stale_minutes=compute_stale_minutes(updated_at),
+        )
+
+    async def get_odometer(self) -> OdometerState:
+        return await self._with_capability("odometer", self._read_odometer)
+
+    async def _read_odometer(self) -> OdometerState:
+        """GET {car_adapter}v1/cars/{vin}/cockpit -> totalMileage.
+
+        De echte auto stuurde hier geen tijdstempel mee; `updated_at` blijft dan
+        `null` in plaats van dat we "nu" invullen -- dat zou een verse meting
+        suggereren die er niet is.
+        """
+        vin = await self._vin()
+        body = await self._request(
+            "GET",
+            self._car_url(vin, "cockpit"),
+            feature=CAPABILITY_LABELS["odometer"],
+        )
+        attributes = (body.get("data") or {}).get("attributes") or body.get("attributes") or {}
+
+        total = attributes.get("totalMileage")
+        return OdometerState(
+            total_km=int(round(total)) if isinstance(total, (int, float)) else None,
+            updated_at=self._parse_timestamp(attributes.get("lastUpdateTime")),
+        )
+
+    @staticmethod
+    def _tyre(attributes: dict[str, Any], prefix: str) -> TyrePressure:
+        """Eén wiel uit `flPressure`/`flStatus` enzovoort."""
+        status = attributes.get(f"{prefix}Status")
+        return TyrePressure(
+            bar=raw_pressure_to_bar(attributes.get(f"{prefix}Pressure")),
+            ok=(status == TYRE_STATUS_OK) if isinstance(status, int) else None,
+        )
+
+    async def get_tyres(self) -> TyreState:
+        return await self._with_capability("tyres", self._read_tyres)
+
+    async def _read_tyres(self) -> TyreState:
+        """GET {car_adapter}v1/cars/{vin}/pressure.
+
+        Gemeten velden: flPressure/frPressure/rlPressure/rrPressure plus
+        flStatus/frStatus/rlStatus/rrStatus. Voor de omrekening naar bar, zie
+        :func:`raw_pressure_to_bar` -- die deelfactor is een aanname.
+        """
+        vin = await self._vin()
+        body = await self._request(
+            "GET",
+            self._car_url(vin, "pressure"),
+            feature=CAPABILITY_LABELS["tyres"],
+        )
+        attributes = (body.get("data") or {}).get("attributes") or body.get("attributes") or {}
+
+        return TyreState(
+            front_left=self._tyre(attributes, "fl"),
+            front_right=self._tyre(attributes, "fr"),
+            rear_left=self._tyre(attributes, "rl"),
+            rear_right=self._tyre(attributes, "rr"),
+            updated_at=self._parse_timestamp(attributes.get("lastUpdateTime")),
+        )
+
+    async def get_capabilities(self) -> Capabilities:
+        """Stel vast wat deze auto levert door het één keer echt te proberen.
+
+        Elk onderdeel dat nog niet bekend is wordt één keer bevraagd. Lukt het,
+        dan `true`; antwoordt Nissan met 403 of 404, dan `false` en wordt het
+        deze sessie niet meer geprobeerd. Er staat bewust geen vaste lijst in
+        de code: op een andere auto of een ander abonnement ligt de grens
+        ergens anders.
+
+        Een onderdeel dat om een andere reden niet antwoordde (slapende auto,
+        netwerkstoring) blijft onbekend en komt optimistisch als `true` terug --
+        dat wordt bij een volgende poging vanzelf bijgesteld.
+        """
+        async with self._capability_lock:
+            openstaand = self._capabilities.unknown()
+            if openstaand:
+                vin = await self._vin()
+                proeven: dict[str, Callable[[], Awaitable[Any]]] = {
+                    "battery": self.get_battery,
+                    "climate": self.get_climate,
+                    "location": self.get_location,
+                    "odometer": self.get_odometer,
+                    "tyres": self.get_tyres,
+                    # Voor deuren en laadschema bestaat geen app-functie -- die
+                    # gaven 403 op de echte auto. Ze worden hier rechtstreeks
+                    # afgetast, zodat ook dát een meting is en geen aanname.
+                    "doors": lambda: self._request(
+                        "GET",
+                        self._car_url(vin, "lock-status"),
+                        feature=CAPABILITY_LABELS["doors"],
+                    ),
+                    "charge_schedule": lambda: self._request(
+                        "GET",
+                        self._car_url(vin, "charging-settings"),
+                        feature=CAPABILITY_LABELS["charge_schedule"],
+                    ),
+                }
+                for naam in openstaand:
+                    await self._probe(naam, proeven[naam])
+
+        return Capabilities(**self._capabilities.snapshot())
+
+    async def _probe(self, naam: str, proef: Callable[[], Awaitable[Any]]) -> None:
+        """Tast één onderdeel af. Alleen een hard "nee" telt als antwoord."""
+        try:
+            await proef()
+        except FeatureUnavailable:
+            self._capabilities.remember(naam, False)
+        except ApiError as exc:
+            if exc.code in ("nissan_auth_failed", "rate_limited"):
+                # Dit gaat niet over de auto maar over de sessie. Doorgeven, en
+                # vooral niets onthouden: anders zetten we op grond van een
+                # inlogprobleem de halve interface uit.
+                raise
+            _LOGGER.info(
+                "Kon %s nu niet vaststellen (%s); blijft onbekend.", naam, exc.code
+            )
+        except httpx.HTTPError as exc:
+            _LOGGER.info("Kon %s nu niet vaststellen: %s", naam, self._scrub(str(exc))[:200])
+        else:
+            self._capabilities.remember(naam, True)
 
     async def aclose(self) -> None:
         if self._owns_client:
