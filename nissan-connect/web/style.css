@@ -422,7 +422,7 @@ body {
 /* ── Bandenspanning: de auto van bovenaf ───────────────────── */
 .banden {
   display: grid;
-  grid-template-columns: 1fr minmax(54px, 72px) 1fr;
+  grid-template-columns: 1fr minmax(58px, 78px) 1fr;
   grid-template-rows: auto auto auto;
   grid-template-areas:
     "voor voor voor"
@@ -544,7 +544,7 @@ body {
   .leeftijd { font-size: 0.92rem; }
 
   /* Banden: de auto wordt smaller zodat de vier waarden heel blijven. */
-  .banden { grid-template-columns: 1fr 44px 1fr; gap: 0.4rem 0.35rem; }
+  .banden { grid-template-columns: 1fr 50px 1fr; gap: 0.4rem 0.3rem; }
   .banden-auto { min-height: 112px; }
   .band { padding: 0.5rem 0.45rem; min-height: 78px; }
   .band-getal { font-size: 1.3rem; }
