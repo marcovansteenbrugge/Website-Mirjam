@@ -93,3 +93,92 @@ Zie `nissan-research/API-RESEARCH.md` voor de onderbouwing.
 - **Abonnement kan stilletjes verlopen.** Inloggen blijft dan werken en de auto is nog
   zichtbaar, alleen `services[]` meldt niet meer `ACTIVATED`. Backend controleert dit
   expliciet en geeft dan een duidelijke melding in plaats van een vage fout.
+
+---
+
+# Uitbreiding: alles wat de auto werkelijk teruggeeft (14-09-2026)
+
+Onderstaande velden zijn **gemeten op de echte Ariya uit 2022**, niet aangenomen.
+De ruwe waarden staan erbij, zodat de omrekening controleerbaar is.
+
+## `GET /api/capabilities`
+
+De interface mag niets tonen wat deze auto niet kan. Nissan geeft 403 op deuren,
+laadschema, laadmodus en energie; een knop die altijd faalt is erger dan geen knop.
+Dit endpoint zegt per onderdeel of het beschikbaar is. De backend bepaalt dit
+één keer bij het eerste gebruik en onthoudt het.
+
+```json
+{
+  "battery": true, "climate": true, "location": true,
+  "odometer": true, "tyres": true, "doors": false, "charge_schedule": false
+}
+```
+
+## `GET /api/battery` — uitgebreid
+
+Bestaande velden blijven. Nieuw (ruwe Nissan-namen tussen haakjes):
+
+```json
+{
+  "charging_remaining_minutes": 254,     // chargingRemainingTime
+  "available_energy_kwh": 22,            // batteryAvailableEnergy
+  "battery_temperature_c": null          // batteryTemperature; gaf 0 op een ladende auto,
+                                         // dus waarschijnlijk niet ondersteund. Bij 0 -> null.
+}
+```
+
+## `GET /api/climate` — uitgebreid
+
+```json
+{ "internal_temperature_c": 16.0 }       // internalTemperature: de gemeten
+                                         // binnentemperatuur, niet de streeftemperatuur
+```
+
+Let op: `target_temp_c` (wat je wilt) en `internal_temperature_c` (wat het nú is)
+zijn verschillende dingen. De interface moet dat onderscheid duidelijk maken.
+
+## `GET /api/location`
+
+```json
+{
+  "latitude": 51.675196944444444,
+  "longitude": 5.042029166666667,
+  "heading_degrees": 298.0,
+  "updated_at": "2026-09-14T07:05:26Z",
+  "stale_minutes": 4
+}
+```
+
+Geen kaartdienst van buitenaf aanroepen: de pagina mag geen enkel extern verzoek
+doen. Toon de coördinaten, een kompasrichting, en een link naar een kaart die de
+gebruiker zelf aanklikt.
+
+## `GET /api/odometer`
+
+```json
+{ "total_km": 21126, "updated_at": null }   // totalMileage
+```
+
+## `GET /api/tyres`
+
+Nissan levert per wiel een druk en een status. Ruwe waarden: `flPressure: 2070`.
+Gedeeld door 1000 geeft 2,07 bar, wat klopt voor een personenauto.
+**Die omrekening is aangenomen, niet bevestigd** — zet dat in een opmerking bij de code.
+`status: 0` betekende bij alle vier de wielen in orde.
+
+```json
+{
+  "front_left":  { "bar": 2.07, "ok": true },
+  "front_right": { "bar": 2.01, "ok": true },
+  "rear_left":   { "bar": 2.16, "ok": true },
+  "rear_right":  { "bar": 2.10, "ok": true },
+  "updated_at": null
+}
+```
+
+## Niet beschikbaar op deze auto
+
+Deuren vergrendelen, laadschema, laadmodus, energiekosten: Nissan antwoordt 403.
+De ritgeschiedenis gaf 400 en onderhoud 404. Niet inbouwen tot een meting het
+tegendeel laat zien.
